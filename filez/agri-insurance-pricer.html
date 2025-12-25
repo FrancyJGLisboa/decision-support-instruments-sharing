@@ -1,0 +1,1106 @@
+<!--
+================================================================================
+sfHTML INSTRUMENT: PARAMETRIC RISK PRICER (CODEX EDITION v9.0) - FIXED BUILD
+================================================================================
+CHANGELOG (FIX PACK):
+[fix-1] Added Max Rate input (#inp-max) + safe defaults.
+[fix-2] Added detail Premium field (#det-premium) referenced by UI.
+[fix-3] Added network timeouts (AbortController) for weather fetches.
+[fix-4] Correct endpoint logic: split Archive vs Forecast when date range crosses today.
+[fix-5] Forecast horizon cap (today + 16 days) + user-visible status note.
+[fix-6] Added fetch caching by (lat,lon,start,end) to speed repeat runs.
+[fix-7] Added try/finally in App.run() to always clear loading overlay.
+[fix-8] Added robust null/invalid response handling + log to console.
+================================================================================
+REPO: FrancyJGLisboa/decision-support-instruments-sharing
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Parametric Pricer | Codex v9.0 (Fixed)</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* --- CORE THEME --- */
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&display=swap');
+
+    :root {
+      --bg-root: #0f172a;
+      --bg-panel: #1e293b;
+      --bg-input: #334155;
+      --border: #475569;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+
+      --col-primary: #3b82f6;
+      --col-success: #10b981;
+      --col-risk: #ef4444;
+      --col-warn: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background-color: var(--bg-root);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* --- LAYOUT UTILS --- */
+    .app-header {
+      flex: 0 0 56px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; z-index: 50;
+    }
+
+    .app-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* SIDEBAR: FIXED LAYOUT */
+    .sidebar {
+      width: 350px;
+      min-width: 350px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 16px;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .main-content {
+      flex: 1;
+      background: var(--bg-root);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* DOCUMENTATION SCROLL AREA */
+    #view-docs {
+      overflow-y: auto;
+      height: 100%;
+      scroll-behavior: smooth;
+    }
+
+    /* --- COMPONENTS --- */
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      flex-shrink: 0;
+    }
+
+    .card-grow {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 200px;
+      overflow: hidden;
+    }
+
+    .list-scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-input);
+      border-radius: 4px;
+      padding: 4px;
+    }
+
+    .chk-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .chk-item:hover { background: rgba(255,255,255,0.05); }
+    .chk-item input { accent-color: var(--col-primary); }
+    .chk-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .lbl {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .input-box {
+      background: var(--bg-root);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+    .input-real {
+      background: transparent;
+      border: none;
+      color: white;
+      width: 100%;
+      outline: none;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 4px;
+      border: none;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--col-primary);
+      color: white;
+    }
+    .btn:hover { background: #2563eb; }
+    .btn:disabled { background: var(--bg-input); color: var(--text-muted); cursor: not-allowed; }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .data-table th {
+      text-align: left;
+      background: var(--bg-panel);
+      color: var(--text-muted);
+      padding: 10px;
+      position: sticky;
+      top: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #1e293b;
+      color: var(--text-main);
+    }
+    .data-table tr:hover td { background: var(--bg-input); cursor: pointer; }
+    .data-table tr.selected td { background: rgba(59, 130, 246, 0.2); }
+
+    .nav-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0 16px;
+      height: 100%;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .nav-btn.active { color: var(--col-primary); border-bottom-color: var(--col-primary); }
+
+    /* --- DOCUMENTATION STYLES (ENHANCED) --- */
+    .doc-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px;
+      color: #cbd5e1;
+    }
+    .doc-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 40px;
+      margin-bottom: 40px;
+    }
+    .doc-h1 { font-size: 36px; font-weight: 800; color: white; margin-bottom: 16px; letter-spacing: -0.02em; }
+    .doc-h2 {
+      font-size: 24px; font-weight: 700; color: white; margin-top: 60px; margin-bottom: 24px;
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    .doc-h3 { font-size: 16px; font-weight: 700; color: var(--col-primary); margin-top: 32px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .doc-p { font-size: 16px; line-height: 1.7; color: #94a3b8; margin-bottom: 24px; text-align: justify; }
+
+    .doc-callout {
+      background: var(--bg-panel);
+      border-left: 4px solid var(--col-primary);
+      padding: 24px;
+      border-radius: 0 8px 8px 0;
+      margin: 32px 0;
+    }
+    .doc-callout h4 { margin: 0 0 8px 0; color: white; font-weight: 700; }
+    .doc-callout p { margin: 0; font-size: 14px; color: #cbd5e1; }
+
+    .doc-formula {
+      background: #020617;
+      border: 1px solid var(--border);
+      padding: 20px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #e2e8f0;
+      margin: 24px 0;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .doc-table {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 32px 0;
+    }
+    .doc-table th { background: var(--bg-panel); padding: 12px; text-align: left; color: white; border-bottom: 1px solid var(--border); }
+    .doc-table td { padding: 12px; border-bottom: 1px solid var(--border); color: #cbd5e1; font-size: 14px; }
+
+    .doc-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; background: var(--bg-input); color: white; font-family: monospace; font-size: 12px; }
+
+    /* UTILS */
+    .hidden { display: none !important; }
+    .animate-pulse { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Small helper badge in details */
+    .kpi-inline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="flex items-center gap-4">
+      <h1 class="text-sm font-bold tracking-widest text-white">
+        PARAMETRIC<span class="text-blue-500">PRICER</span>
+      </h1>
+      <div class="h-6 w-px bg-slate-700 mx-2"></div>
+      <button id="tab-dash" class="nav-btn active" onclick="UI.switchTab('dash')">DASHBOARD</button>
+      <button id="tab-docs" class="nav-btn" onclick="UI.switchTab('docs')">METHODOLOGY</button>
+    </div>
+    <div class="text-[10px] font-mono text-slate-500" id="sys-status">SYSTEM IDLE</div>
+  </header>
+
+  <!-- BODY -->
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+      <!-- 1. Rules -->
+      <div class="card">
+        <span class="lbl text-violet-400">Underwriting Rules</span>
+
+        <div class="flex gap-2 mt-2">
+          <div class="flex-1">
+            <span class="lbl">Trigger (mm)</span>
+            <div class="input-box">
+              <input type="number" id="inp-trigger" class="input-real text-red-400 font-bold" value="-150">
+            </div>
+          </div>
+
+          <div class="flex-1">
+            <span class="lbl">Base Rate %</span>
+            <div class="input-box">
+              <input type="number" id="inp-base" class="input-real" value="3.5" step="0.1" min="0">
+            </div>
+          </div>
+        </div>
+
+        <!-- FIX: Add Max Rate input (was referenced but missing) -->
+        <div class="flex gap-2 mt-2">
+          <div class="flex-1">
+            <span class="lbl">Max Rate %</span>
+            <div class="input-box">
+              <input type="number" id="inp-max" class="input-real" value="12" step="0.1" min="0">
+            </div>
+          </div>
+          <div class="flex-1">
+            <span class="lbl">Mode</span>
+            <div class="input-box">
+              <input type="text" class="input-real text-slate-400" value="HYBRID" readonly>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Portfolio -->
+      <div class="card card-grow">
+        <div class="flex justify-between items-center mb-2">
+          <span class="lbl text-white">Regions</span>
+          <span id="lbl-count" class="text-[9px] text-blue-400 font-bold">0 SELECTED</span>
+        </div>
+
+        <!-- Search -->
+        <div class="input-box mb-2" style="padding: 4px 8px;">
+          <input type="text" id="inp-search" class="input-real" placeholder="Filter list..." onkeyup="UI.filterRegions(this.value)">
+        </div>
+
+        <!-- Scrollable List -->
+        <div id="list-container" class="list-scroll-area">
+          <div class="p-4 text-center text-xs text-gray-500">Initializing Database...</div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex gap-2 mt-2 pt-2 border-t border-slate-700">
+          <button onclick="UI.toggleAll(true)" class="bg-slate-700 text-white text-[9px] py-1 px-2 rounded hover:bg-slate-600 flex-1">ALL</button>
+          <button onclick="UI.toggleAll(false)" class="bg-slate-700 text-white text-[9px] py-1 px-2 rounded hover:bg-slate-600 flex-1">NONE</button>
+        </div>
+      </div>
+
+      <!-- 3. Actions -->
+      <div class="card">
+        <span class="lbl">Analysis Window</span>
+        <div class="flex gap-2 mb-3">
+          <input type="date" id="inp-start" class="input-box text-[10px]">
+          <input type="date" id="inp-end" class="input-box text-[10px]">
+        </div>
+        <button id="btn-run" onclick="App.run()" class="btn">CALCULATE RISK</button>
+        <div class="mt-2 text-[10px] text-slate-500 font-mono leading-snug">
+          Forecast is capped to approximately 16 days ahead; history comes from archive.
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- CONTENT -->
+    <main class="main-content">
+
+      <!-- VIEW 1: DASHBOARD -->
+      <div id="view-dash" class="flex flex-col h-full p-4 gap-4" style="overflow-y: auto;">
+
+        <!-- Empty State -->
+        <div id="state-empty" class="absolute inset-0 flex flex-col items-center justify-center z-0 pointer-events-none">
+          <div class="text-slate-600 text-6xl mb-4">📊</div>
+          <h2 class="text-slate-400 font-bold">Portfolio Analysis Required</h2>
+          <p class="text-slate-600 text-xs mt-2">Select regions on the left and click Calculate.</p>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="state-load" class="hidden absolute inset-0 bg-slate-900/90 z-50 flex flex-col items-center justify-center">
+          <div class="text-blue-500 font-mono animate-pulse">PROCESSING DATA BATCH...</div>
+          <div class="w-64 h-1 bg-slate-700 mt-4 rounded">
+            <div id="load-bar" class="h-full bg-blue-500 w-0 transition-all"></div>
+          </div>
+          <div class="mt-3 text-[10px] text-slate-500 font-mono" id="load-hint">Fetching weather data...</div>
+        </div>
+
+        <!-- Results -->
+        <div id="state-results" class="hidden flex-col h-full gap-4 relative z-10 bg-slate-900">
+
+          <!-- Top: Ranking Table -->
+          <div class="card p-0 flex flex-col h-1/3 min-h-[200px] overflow-hidden">
+            <div class="p-3 border-b border-slate-700 bg-slate-800 flex justify-between items-center">
+              <span class="lbl text-white">Risk Exposure Ranking</span>
+              <button onclick="UI.exportCSV()" class="text-[10px] text-blue-400 hover:underline">Export CSV</button>
+            </div>
+            <div class="flex-1 overflow-auto bg-slate-900">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Region</th>
+                    <th class="text-right">Observed</th>
+                    <th class="text-right">Anomaly</th>
+                    <th class="text-right">Gap</th>
+                    <th class="text-right">Score</th>
+                    <th class="text-right">Decision</th>
+                  </tr>
+                </thead>
+                <tbody id="table-ranking"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Bottom: Details -->
+          <div class="flex-1 flex gap-4 min-h-0">
+
+            <!-- Chart -->
+            <div class="flex-1 card flex flex-col">
+              <div class="flex justify-between mb-2 items-center">
+                <div class="flex flex-col">
+                  <span id="det-title" class="text-lg font-bold text-white">--</span>
+                  <!-- FIX: Add premium field that UI.showResults references -->
+                  <span class="kpi-inline">Premium: <span id="det-premium" class="text-blue-300">--</span></span>
+                </div>
+
+                <span id="det-badge" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700 text-gray-400">--</span>
+              </div>
+
+              <div class="relative flex-1 min-h-0">
+                <canvas id="chart-main"></canvas>
+              </div>
+            </div>
+
+            <!-- KPIs -->
+            <div class="w-64 flex flex-col gap-2">
+              <div class="card border-l-4 border-blue-500">
+                <span class="lbl text-blue-500">Rainfall</span>
+                <div id="kpi-rain" class="text-xl font-bold font-mono">--</div>
+              </div>
+              <div class="card border-l-4 border-amber-500">
+                <span class="lbl text-amber-500">Anomaly</span>
+                <div id="kpi-anom" class="text-xl font-bold font-mono">--</div>
+              </div>
+              <div class="card border-l-4 border-red-500">
+                <span class="lbl text-red-500">Gap to Trigger</span>
+                <div id="kpi-gap" class="text-xl font-bold font-mono">--</div>
+              </div>
+              <div class="card flex-1 flex flex-col min-h-0 p-0 overflow-hidden">
+                <div class="p-2 border-b border-slate-700 bg-slate-800">
+                  <span class="lbl mb-0">Log</span>
+                </div>
+                <div class="flex-1 overflow-auto p-0">
+                  <table class="data-table">
+                    <tbody id="table-log"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- VIEW 2: METHODOLOGY (CODEX) -->
+      <!-- NOTE: Kept as-is per your instruction -->
+      <div id="view-docs" class="hidden">
+        <div class="doc-container">
+
+          <div class="doc-header">
+            <span class="text-blue-500 text-xs font-bold tracking-widest mb-2 block">TECHNICAL WHITE PAPER</span>
+            <h1 class="doc-h1">Parametric Insurance Methodology</h1>
+            <p class="doc-p text-lg text-slate-300">
+              A comprehensive guide to the algorithms, data sources, and pricing logic used by the <strong>ParametricPricer</strong> engine to assess agricultural drought risk.
+            </p>
+          </div>
+
+          <!-- Section 1 -->
+          <h2 class="doc-h2"><span class="text-blue-500">01.</span> Introduction to Parametric Risk</h2>
+          <p class="doc-p">
+            Traditional agricultural insurance is indemnity-based: it compensates for actual proven loss. This requires on-field adjusters, creating delays and high operational costs.
+          </p>
+          <p class="doc-p">
+            <strong>Parametric Insurance</strong> (or Index Insurance) operates on a "If X, then Y" logic. It uses an objective proxy (like rainfall) to approximate loss. If the index breaches a pre-defined threshold (Trigger), the payout is automatic.
+          </p>
+          <div class="doc-callout">
+            <h4>The Value Proposition</h4>
+            <p>Transparency, speed of payout, and elimination of moral hazard. This tool is designed to price the "Drought Risk" component of such policies.</p>
+          </div>
+
+          <!-- Section 2 -->
+          <h2 class="doc-h2"><span class="text-blue-500">02.</span> The Hybrid Data Engine</h2>
+          <p class="doc-p">
+            Agricultural risk analysis requires looking at the past (to calibrate risk) and the near-future (to manage active exposure). This instrument uses a unique <strong>"Hybrid Stitching"</strong> architecture to combine data sources seamlessly.
+          </p>
+
+          <h3 class="doc-h3">Data Provenance</h3>
+          <table class="doc-table">
+            <thead><tr><th>Time Horizon</th><th>Source API</th><th>Model Data</th><th>Granularity</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Deep Past</strong><br>(1940 to T-90)</td><td>Open-Meteo Archive</td><td><strong>ERA5 Reanalysis</strong><br>(ECMWF)</td><td>0.25° Grid<br>Daily Sum</td></tr>
+              <tr><td><strong>Recent Past</strong><br>(T-90 to Yesterday)</td><td>Open-Meteo Forecast</td><td><strong>Observed Mix</strong><br>(Satellite + Gauge)</td><td>Interpolated<br>Daily Sum</td></tr>
+              <tr><td><strong>Forecast</strong><br>(Today to T+16)</td><td>Open-Meteo Forecast</td><td><strong>GFS / ICON</strong><br>(Deterministic)</td><td>13km Grid<br>Daily Sum</td></tr>
+            </tbody>
+          </table>
+
+          <p class="doc-p">
+            <strong>Stitching Algorithm:</strong> When you select a date range (e.g., "Last 60 days to Next 10 days"), the engine fires parallel requests to both APIs and merges the time-series arrays into a single continuous dataset. This allows you to see the "Train Wreck in Slow Motion" — how past deficit combines with a dry forecast to hit the trigger.
+          </p>
+
+          <!-- Section 3 -->
+          <h2 class="doc-h2"><span class="text-blue-500">03.</span> Mathematical Framework</h2>
+          <p class="doc-p">
+            The core metric used is <strong>Cumulative Precipitation Anomaly</strong>. We compare the "Water Account" of the soil against a Climatological Baseline.
+          </p>
+
+          <h3 class="doc-h3">A. The Baseline</h3>
+          <p class="doc-p">
+            Every region has a specific "Water Demand" or expected rainfall. For this version, we use a <strong>Synthetic Baseline</strong> derived from the region's historical average (e.g., Sorriso-MT expects ~7.2mm/day during the season).
+          </p>
+
+          <h3 class="doc-h3">B. Calculation Steps</h3>
+          <div class="doc-formula">
+            // Step 1: Daily Anomaly
+            Anomaly(t) = P_Observed(t) - P_Baseline(t)
+
+            // Step 2: Accumulation (The "Water Debt")
+            Acc_Anomaly(T) = Σ Anomaly(t) for t=Start to End
+          </div>
+          <p class="doc-p">
+            If <span class="doc-tag">Acc_Anomaly</span> is negative, the region is in deficit. If it falls below the Trigger (e.g., -150mm), the policy pays out.
+          </p>
+
+          <!-- Section 4 -->
+          <h2 class="doc-h2"><span class="text-blue-500">04.</span> Pricing & Scoring Logic</h2>
+          <p class="doc-p">
+            How do we convert "mm of rain" into a "% Premium"? We use a <strong>Linear Risk Interpolation</strong> based on the "Gap" to the trigger.
+          </p>
+
+          <div class="doc-formula">
+            // 1. Calculate Distance to Disaster
+            Gap = Acc_Anomaly - Trigger
+            // Example: Anomaly is -100, Trigger is -150. Gap is 50mm.
+
+            // 2. Normalize Risk Ratio (0 to 1)
+            // Range is ABS(Trigger) = 150.
+            Risk_Ratio = 1 - (Gap / Range)
+            // Ratio = 1 - (50/150) = 0.66 (High Risk)
+
+            // 3. Price It
+            Premium = Base_Rate + ((Max_Rate - Base_Rate) * Risk_Ratio)
+          </div>
+
+          <h3 class="doc-h3">Decision Matrix</h3>
+          <ul style="list-style: disc; margin-left: 20px; color: #94a3b8; margin-bottom: 30px;">
+            <li><strong>DECLINE (Score 100):</strong> The trigger has been hit. Payout is certain. Uninsurable.</li>
+            <li><strong>HIGH RISK (Score > 50):</strong> The region is dangerously close to the trigger. Premium is aggravated near Max Rate.</li>
+            <li><strong>ACCEPT (Score < 50):</strong> The region has a healthy buffer. Premium is near Base Rate.</li>
+          </ul>
+
+          <!-- Disclaimer -->
+          <div class="doc-callout" style="border-color: #f59e0b; background: rgba(245, 158, 11, 0.1);">
+            <h4 style="color: #f59e0b;">IMPORTANT DISCLAIMER</h4>
+            <p>
+              This software is a <strong>Decision Support System (DSS)</strong> for educational and simulation purposes only.
+              <br><br>
+              1. <strong>Not a Legal Document:</strong> This is not a binding insurance quote.<br>
+              2. <strong>Data Limitations:</strong> Reanalysis data (ERA5) may differ from on-site rain gauges due to spatial resolution.<br>
+              3. <strong>Validation Required:</strong> Any underwriting decision should be cross-referenced with local INMET/CEMADEN station data.
+            </p>
+          </div>
+
+          <div style="height: 100px;"></div> <!-- Spacer -->
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- LOGIC -->
+  <script>
+    /* --- CONFIG & DATA --- */
+    const FALLBACK_REGIONS = [
+      { id: 'mt-sorriso', name: 'Sorriso - MT', lat: -12.54, lon: -55.72 },
+      { id: 'go-rioverde', name: 'Rio Verde - GO', lat: -17.79, lon: -50.92 },
+      { id: 'pr-cascavel', name: 'Cascavel - PR', lat: -24.95, lon: -53.46 },
+      { id: 'ba-lem', name: 'Luis Eduardo - BA', lat: -12.09, lon: -45.79 },
+      { id: 'ma-balsas', name: 'Balsas - MA', lat: -7.53, lon: -46.03 },
+      { id: 'mt-sapezal', name: 'Sapezal - MT', lat: -13.55, lon: -58.81 },
+      { id: 'go-cristalina', name: 'Cristalina - GO', lat: -16.76, lon: -47.61 },
+      { id: 'mt-sinop', name: 'Sinop - MT', lat: -11.86, lon: -55.50 },
+      { id: 'pr-londrina', name: 'Londrina - PR', lat: -23.30, lon: -51.16 },
+      { id: 'ms-dourados', name: 'Dourados - MS', lat: -22.22, lon: -54.80 },
+      { id: 'rs-passofundo', name: 'Passo Fundo - RS', lat: -28.26, lon: -52.40 },
+      { id: 'sp-assis', name: 'Assis - SP', lat: -22.66, lon: -50.41 },
+      { id: 'mg-uberaba', name: 'Uberaba - MG', lat: -19.74, lon: -47.93 },
+      { id: 'to-portonacional', name: 'Porto Nacional - TO', lat: -10.70, lon: -48.41 },
+      { id: 'pi-urucui', name: 'Uruçuí - PI', lat: -7.22, lon: -44.55 }
+    ];
+
+    const UI = {
+      els: {},
+      init() {
+        // Cache IDs
+        [
+          'list-container', 'lbl-count', 'inp-search', 'inp-start', 'inp-end',
+          'inp-trigger', 'inp-base', 'inp-max', 'btn-run',
+          'view-dash', 'view-docs', 'tab-dash', 'tab-docs', 'sys-status',
+          'state-empty', 'state-load', 'state-results', 'load-bar', 'load-hint',
+          'table-ranking', 'det-title', 'det-badge', 'det-premium', 'chart-main',
+          'kpi-rain', 'kpi-anom', 'kpi-gap', 'table-log'
+        ].forEach(id => this.els[id] = document.getElementById(id));
+
+        // Set Dates
+        const t = new Date();
+        const past = new Date(); past.setDate(t.getDate() - 60);
+        const fut = new Date(); fut.setDate(t.getDate() + 15);
+        this.els['inp-start'].value = past.toISOString().split('T')[0];
+        this.els['inp-end'].value = fut.toISOString().split('T')[0];
+      },
+
+      switchTab(t) {
+        this.els['view-dash'].classList.toggle('hidden', t !== 'dash');
+        this.els['view-docs'].classList.toggle('hidden', t !== 'docs');
+        this.els['tab-dash'].classList.toggle('active', t === 'dash');
+        this.els['tab-docs'].classList.toggle('active', t === 'docs');
+      },
+
+      renderList(list) {
+        // Sort
+        list.sort((a,b) => a.name.localeCompare(b.name));
+
+        const html = list.map(r => `
+          <label class="chk-item" data-search="${r.name.toLowerCase()}">
+            <input type="checkbox" value="${r.id}" onchange="UI.updateCount()">
+            <span class="chk-label">${r.name}</span>
+          </label>
+        `).join('');
+        this.els['list-container'].innerHTML = html;
+      },
+
+      filterRegions(val) {
+        const q = (val || '').toLowerCase();
+        const items = this.els['list-container'].children;
+        for (let item of items) {
+          const name = item.getAttribute('data-search') || '';
+          item.style.display = name.includes(q) ? 'flex' : 'none';
+        }
+      },
+
+      toggleAll(on) {
+        const inputs = this.els['list-container'].querySelectorAll('input');
+        inputs.forEach(i => {
+          if (i.parentElement.style.display !== 'none') i.checked = on;
+        });
+        this.updateCount();
+      },
+
+      updateCount() {
+        const n = this.els['list-container'].querySelectorAll('input:checked').length;
+        this.els['lbl-count'].innerText = `${n} SELECTED`;
+      },
+
+      updateStatus(msg) {
+        this.els['sys-status'].innerText = `SYSTEM ${msg}`;
+      },
+
+      // Render Results
+      showResults(results, activeId) {
+        this.els['state-empty'].classList.add('hidden');
+        this.els['state-load'].classList.add('hidden');
+        this.els['state-results'].classList.remove('hidden');
+        this.els['state-results'].style.display = 'flex';
+
+        const sorted = Object.values(results).sort((a,b) => b.score - a.score);
+        this.els['table-ranking'].innerHTML = sorted.map(r => `
+          <tr onclick="App.selectRegion('${r.id}')" class="${r.id===activeId ? 'selected' : ''}">
+            <td class="font-bold text-white">${r.name}</td>
+            <td class="text-right text-blue-400">${r.rain.toFixed(0)}</td>
+            <td class="text-right ${r.anom<0?'text-red-400':'text-emerald-400'}">${r.anom.toFixed(0)}</td>
+            <td class="text-right text-gray-400">${r.gap.toFixed(0)}</td>
+            <td class="text-right text-white">${r.score.toFixed(0)}</td>
+            <td class="text-right font-bold ${r.decision==='DECLINE'?'text-red-500':'text-emerald-500'}">${r.decision}</td>
+          </tr>
+        `).join('');
+
+        if(activeId && results[activeId]) {
+          const r = results[activeId];
+          this.els['det-title'].innerText = r.name;
+
+          this.els['det-badge'].innerText = r.decision;
+          this.els['det-badge'].className =
+            `px-2 py-1 rounded text-[10px] font-bold ${
+              r.decision==='DECLINE' ? 'bg-red-900 text-red-200' :
+              r.decision==='HIGH RISK' ? 'bg-amber-900 text-amber-200' :
+              'bg-emerald-900 text-emerald-200'
+            }`;
+
+          this.els['det-premium'].innerText = (r.decision === 'DECLINE')
+            ? 'PAYOUT'
+            : (r.premium != null ? (r.premium.toFixed(2) + '%') : '--');
+
+          this.els['kpi-rain'].innerText = r.rain.toFixed(0);
+          this.els['kpi-anom'].innerText = r.anom.toFixed(0);
+          this.els['kpi-gap'].innerText = r.gap.toFixed(0);
+
+          // Log
+          this.els['table-log'].innerHTML = r.series.slice(-20).reverse().map(s => `
+            <tr>
+              <td class="text-gray-500 text-[10px]">${s.date}</td>
+              <td class="text-right font-mono text-[11px] ${s.anom<0?'text-red-400':'text-emerald-400'}">${s.anom.toFixed(0)}</td>
+            </tr>
+          `).join('');
+
+          this.renderChart(r);
+        }
+      },
+
+      renderChart(r) {
+        const ctx = this.els['chart-main'].getContext('2d');
+        if(window.myChart) window.myChart.destroy();
+
+        const labels = r.series.map(s => s.date);
+        const data = r.series.map(s => s.accAnom);
+        const trigger = Array(labels.length).fill(r.trigger);
+
+        window.myChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Trigger', data: trigger, borderColor: '#ef4444', borderDash: [5,5], pointRadius: 0, borderWidth: 1 },
+              { label: 'Cumulative Anomaly', data, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, pointRadius: 0, borderWidth: 2 }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8', font:{size:10} } },
+              y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+            },
+            plugins: { legend: { display: false } }
+          }
+        });
+      },
+
+      exportCSV() {
+        if(!App.results) return;
+        let csv = "Region,Rain,Anomaly,Gap,Score,Decision,Premium\n";
+        Object.values(App.results).forEach(r => {
+          const prem = (r.decision === 'DECLINE') ? 'PAYOUT' : (r.premium != null ? r.premium : '');
+          csv += `"${r.name}",${r.rain},${r.anom},${r.gap},${r.score},${r.decision},${prem}\n`;
+        });
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'risk_report.csv';
+        a.click();
+      }
+    };
+
+    /* --- DATA ENGINE --- */
+    const Data = {
+      regions: {},
+      cache: new Map(), // FIX: cache responses per (lat,lon,start,end)
+      constants: {
+        FORECAST_MAX_DAYS: 16,
+        FETCH_TIMEOUT_MS: 12000
+      },
+
+      async load() {
+        UI.updateStatus("LOADING DB...");
+
+        // 1. Load Fallback First (Guaranteed Visibility)
+        FALLBACK_REGIONS.forEach(r => this.regions[r.id] = { ...r, baseline: 6.0 });
+        UI.renderList(Object.values(this.regions));
+
+        // 2. Try GitHub (Async)
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+          const res = await fetch(
+            'https://raw.githubusercontent.com/FrancyJGLisboa/agri-feeders/main/data/ibge-data.json',
+            { signal: controller.signal }
+          );
+          clearTimeout(timeoutId);
+
+          if(res.ok) {
+            const data = await res.json();
+            if(data.municipios) {
+              this.regions = {};
+              Object.keys(data.municipios).forEach(k => {
+                const m = data.municipios[k];
+                this.regions[k] = { id: k, name: k.toUpperCase(), lat: m.lat, lon: m.lon, baseline: 6.0 };
+              });
+              UI.renderList(Object.values(this.regions));
+              UI.updateStatus("ONLINE DB");
+            } else {
+              UI.updateStatus("ONLINE DB (NO MUNICIPIOS)");
+            }
+          } else {
+            UI.updateStatus("OFFLINE MODE");
+          }
+        } catch(e) {
+          console.warn("Using Offline DB", e);
+          UI.updateStatus("OFFLINE MODE");
+        }
+      },
+
+      ymd(d) {
+        // Always return YYYY-MM-DD in local UTC ISO form
+        return new Date(d).toISOString().slice(0,10);
+      },
+
+      async fetchWithTimeout(url, ms) {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), ms);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } finally {
+          clearTimeout(t);
+        }
+      },
+
+      mkForecastURL(lat, lon, start, end) {
+        return `https://api.open-metean.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+          + `&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=America%2FSao_Paulo`;
+      },
+
+      mkForecastURLSafe(lat, lon, start, end) {
+        // FIX: correct base domain + consistent params
+        return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+          + `&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=America%2FSao_Paulo`;
+      },
+
+      mkArchiveURL(lat, lon, start, end) {
+        return `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}`
+          + `&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=America%2FSao_Paulo`;
+      },
+
+      validateInputs(start, end) {
+        // Guard: ensure start <= end
+        const s = new Date(start);
+        const e = new Date(end);
+        if (isNaN(s.getTime()) || isNaN(e.getTime())) return { ok: false, msg: "Invalid date inputs." };
+        if (s > e) return { ok: false, msg: "Start date must be <= end date." };
+        return { ok: true };
+      },
+
+      cappedForecastEnd(end) {
+        const today = new Date();
+        const maxForecast = new Date(today);
+        maxForecast.setDate(today.getDate() + this.constants.FORECAST_MAX_DAYS);
+
+        const endD = new Date(end);
+        const capped = (endD > maxForecast) ? maxForecast : endD;
+        return this.ymd(capped);
+      },
+
+      async fetchWeather(lat, lon, start, end) {
+        // FIX: cache first
+        const cacheKey = `${lat},${lon}|${start}|${end}`;
+        if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
+
+        const today = new Date();
+        const startD = new Date(start);
+        const endD = new Date(end);
+
+        const todayYMD = this.ymd(today);
+        const cappedEnd = this.cappedForecastEnd(end);
+
+        // Helper to stitch archive + forecast
+        const stitch = (a, f) => {
+          if (!a?.daily && f?.daily) return f;
+          if (a?.daily && !f?.daily) return a;
+          if (!a?.daily && !f?.daily) return null;
+
+          return {
+            daily: {
+              time: [...a.daily.time, ...f.daily.time],
+              precipitation_sum: [...a.daily.precipitation_sum, ...f.daily.precipitation_sum]
+            }
+          };
+        };
+
+        try {
+          // Case 1: Entirely past -> archive only
+          if (endD < new Date(todayYMD)) {
+            const urlA = this.mkArchiveURL(lat, lon, start, end);
+            const a = await this.fetchWithTimeout(urlA, this.constants.FETCH_TIMEOUT_MS);
+            this.cache.set(cacheKey, a);
+            return a;
+          }
+
+          // Case 2: Entirely future/today -> forecast only (but capped)
+          if (startD >= new Date(todayYMD)) {
+            const urlF = this.mkForecastURLSafe(lat, lon, start, cappedEnd);
+            const f = await this.fetchWithTimeout(urlF, this.constants.FETCH_TIMEOUT_MS);
+            this.cache.set(cacheKey, f);
+            return f;
+          }
+
+          // Case 3: Crosses today -> split (archive up to yesterday) + forecast from today (capped)
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
+          const yYMD = this.ymd(yesterday);
+
+          const urlA = this.mkArchiveURL(lat, lon, start, yYMD);
+          const urlF = this.mkForecastURLSafe(lat, lon, todayYMD, cappedEnd);
+
+          const [a, f] = await Promise.all([
+            this.fetchWithTimeout(urlA, this.constants.FETCH_TIMEOUT_MS),
+            this.fetchWithTimeout(urlF, this.constants.FETCH_TIMEOUT_MS)
+          ]);
+
+          const out = stitch(a, f);
+          this.cache.set(cacheKey, out);
+          return out;
+
+        } catch(e) {
+          console.warn("Weather fetch failed:", e);
+          this.cache.set(cacheKey, null);
+          return null;
+        }
+      }
+    };
+
+    /* --- APP LOGIC --- */
+    const App = {
+      results: {},
+      activeId: null,
+
+      async init() {
+        UI.init();
+        await Data.load();
+      },
+
+      getSelectedRegionIds() {
+        const chks = document.querySelectorAll('#list-container input:checked');
+        return Array.from(chks).map(c => c.value);
+      },
+
+      setLoading(on, hint) {
+        if (on) {
+          UI.els['state-empty'].classList.add('hidden');
+          UI.els['state-load'].classList.remove('hidden');
+          if (UI.els['load-hint']) UI.els['load-hint'].innerText = hint || "Processing...";
+          UI.updateStatus("CALCULATING...");
+        } else {
+          UI.els['state-load'].classList.add('hidden');
+        }
+      },
+
+      async run() {
+        const targets = this.getSelectedRegionIds();
+        if(!targets.length) return alert("Select regions");
+
+        // Input validation
+        const start = UI.els['inp-start'].value;
+        const end = UI.els['inp-end'].value;
+
+        const v = Data.validateInputs(start, end);
+        if (!v.ok) return alert(v.msg);
+
+        const trigger = parseFloat(UI.els['inp-trigger'].value);
+        const baseRate = parseFloat(UI.els['inp-base'].value);
+
+        // FIX: safe maxRate read
+        const maxRateEl = UI.els['inp-max'];
+        const maxRate = maxRateEl ? parseFloat(maxRateEl.value) : 12.0;
+
+        // Inform about forecast capping if necessary
+        const cappedEnd = Data.cappedForecastEnd(end);
+        const endD = new Date(end);
+        const cappedEndD = new Date(cappedEnd);
+        const isCapped = endD.getTime() > cappedEndD.getTime();
+
+        // UI
+        this.results = {};
+        this.activeId = null;
+        this.setLoading(true, isCapped ? "Forecast capped to ~16 days ahead; stitching archive + forecast..." : "Fetching weather data...");
+
+        try {
+          // Batch Process (keep behavior)
+          const BATCH = 5;
+
+          for(let i=0; i<targets.length; i+=BATCH) {
+            const batch = targets.slice(i, i+BATCH);
+
+            await Promise.all(batch.map(async id => {
+              const reg = Data.regions[id];
+              if (!reg) return;
+
+              // Update hint
+              if (UI.els['load-hint']) UI.els['load-hint'].innerText = `Fetching: ${reg.name}`;
+
+              const w = await Data.fetchWeather(reg.lat, reg.lon, start, end);
+
+              // Validate response shape
+              if(!(w && w.daily && Array.isArray(w.daily.time) && Array.isArray(w.daily.precipitation_sum))) {
+                console.warn("Invalid weather response for", reg.name, w);
+                return;
+              }
+
+              const series = [];
+              let accAnom = 0, accRain = 0;
+
+              // Ensure aligned arrays
+              const n = Math.min(w.daily.time.length, w.daily.precipitation_sum.length);
+
+              for (let idx = 0; idx < n; idx++) {
+                const t = w.daily.time[idx];
+                const rain = (w.daily.precipitation_sum[idx] ?? 0) || 0;
+                const anom = rain - reg.baseline;
+                accRain += rain;
+                accAnom += anom;
+                series.push({ date: t, rain, anom, accAnom });
+              }
+
+              const gap = accAnom - trigger;
+              let decision = "ACCEPT", score = 0, premium = baseRate;
+
+              if(accAnom <= trigger) {
+                decision = "DECLINE";
+                score = 100;
+                premium = 0;
+              } else {
+                const ratio = Math.max(0, 1 - (gap / Math.abs(trigger)));
+                score = ratio * 90;
+
+                if(ratio > 0.5) {
+                  decision = "HIGH RISK";
+                  premium = baseRate + ((maxRate - baseRate) * ratio);
+                }
+              }
+
+              this.results[id] = {
+                id,
+                name: reg.name,
+                series,
+                rain: accRain,
+                anom: accAnom,
+                gap,
+                score,
+                decision,
+                trigger,
+                premium
+              };
+            }));
+
+            const pct = ((i + BATCH) / targets.length) * 100;
+            UI.els['load-bar'].style.width = `${Math.min(100, pct)}%`;
+          }
+
+          UI.updateStatus(isCapped ? "DONE (FORECAST CAPPED)" : "DONE");
+
+          const worst = Object.values(this.results).sort((a,b) => b.score - a.score)[0];
+          if(worst) this.selectRegion(worst.id);
+          else alert("No results returned. Check network / console.");
+
+        } catch(e) {
+          console.error("Run failed:", e);
+          alert("Calculation failed. Check console/network for details.");
+        } finally {
+          // FIX: always clear loading overlay
+          this.setLoading(false);
+        }
+      },
+
+      selectRegion(id) {
+        this.activeId = id;
+        UI.showResults(this.results, id);
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => App.init());
+  </script>
+</body>
+</html>
+ 
