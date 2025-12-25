@@ -1,0 +1,471 @@
+<!--
+sfHTML Instrument: Agri-Export Parity Calculator (PPE)
+Based on: Agrinvest Commodities Methodology (Slides 29-33)
+Publish as: filez/agri-export-parity-calculator.html
+Repo: FrancyJGLisboa/decision-support-instruments-sharing
+-->
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calculadora de Paridade de Exportação (PPE)</title>
+
+  <style>
+    :root {
+      --primary: #006837; /* Agrinvest Green-ish */
+      --secondary: #8bc53f;
+      --bg: #f4f7f6;
+      --card-bg: #ffffff;
+      --text: #2c3e50;
+      --muted: #7f8c8d;
+      --border: #e0e0e0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+
+    h1 { margin: 0; font-size: 1.5rem; color: var(--primary); }
+    .subtitle { color: var(--muted); font-size: 0.9rem; }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      border: 1px solid var(--border);
+    }
+
+    /* Layer 0: Big Number */
+    .decision-box {
+      text-align: center;
+      background: linear-gradient(135deg, var(--primary), #004d29);
+      color: white;
+    }
+    
+    .big-number {
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1;
+      margin: 10px 0;
+    }
+    
+    .big-label {
+      font-size: 1rem;
+      opacity: 0.9;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Input Grid */
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    input, select {
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 1rem;
+      background: #fafafa;
+    }
+
+    input:focus {
+      outline: 2px solid var(--secondary);
+      border-color: transparent;
+    }
+
+    /* Layers 1 & 2 */
+    .driver-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .driver-row:last-child { border-bottom: none; }
+    .driver-val { font-weight: 600; font-family: monospace; }
+    .negative { color: #e74c3c; }
+    .positive { color: var(--primary); }
+
+    details {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--primary);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    summary::after {
+      content: "▼";
+      font-size: 0.7em;
+      margin-left: auto;
+    }
+    
+    details[open] summary::after {
+      content: "▲";
+    }
+
+    /* Audit Layer */
+    pre {
+      background: #eee;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.8rem;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    
+    button.mode-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--primary);
+      background: transparent;
+      color: var(--primary);
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    
+    button.mode-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+  </style>
+
+  <!-- DATA CORE: Constants based on PDF -->
+  <script type="application/json" id="data-core">
+  {
+    "version": "1.0.0",
+    "source": "Agrinvest Commodities - Formação de Traders (Slides 29-33)",
+    "constants": {
+      "SOYBEAN": {
+        "bushel_to_ton_cbot": 36.7437,
+        "bushel_to_ton_anec": 36.7454,
+        "bushel_to_sack": 2.2046,
+        "sack_weight_kg": 60,
+        "ton_to_sack": 16.6667
+      },
+      "CORN": {
+        "bushel_to_ton_cbot": 39.3683,
+        "bushel_to_ton_anec": 39.3678,
+        "bushel_to_sack": 2.3621,
+        "sack_weight_kg": 60,
+        "ton_to_sack": 16.6667
+      }
+    },
+    "defaults": {
+      "cbot": 1191.25,
+      "basis": 66,
+      "fx": 5.349,
+      "logistics_road": 300.00,
+      "fobbings_usd": 8.00,
+      "freight_int_usd": 17.24
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Calculadora de Paridade (PPE)</h1>
+    <div class="subtitle">Baseado na Metodologia Agrinvest - Pilar 1: Formação de Preço</div>
+  </header>
+
+  <!-- Commodity Selector -->
+  <div class="toolbar">
+    <button class="mode-btn active" onclick="setCommodity('SOYBEAN')">Soja</button>
+    <button class="mode-btn" onclick="setCommodity('CORN')">Milho</button>
+  </div>
+
+  <!-- Layer 0: The Decision -->
+  <div class="card decision-box">
+    <div class="big-label">Preço Viável na Fazenda (EXW)</div>
+    <div class="big-number" id="result-price">R$ 0,00</div>
+    <div style="font-size: 0.9rem; opacity: 0.9">por saca de 60kg</div>
+  </div>
+
+  <!-- Inputs -->
+  <div class="card">
+    <div class="input-grid">
+      <div class="input-group">
+        <label>CBOT (cents/bu)</label>
+        <input type="number" id="inp-cbot" value="1191.25" oninput="calculate()">
+      </div>
+      <div class="input-group">
+        <label>Basis / Prêmio (cents/bu)</label>
+        <input type="number" id="inp-basis" value="66" oninput="calculate()">
+      </div>
+      <div class="input-group">
+        <label>Dólar (BRL/USD)</label>
+        <input type="number" id="inp-fx" value="5.349" step="0.001" oninput="calculate()">
+      </div>
+    </div>
+    
+    <div style="margin-top:16px; border-top: 1px solid #eee; padding-top:10px;">
+      <label style="display:block; margin-bottom: 8px;">Custos Logísticos</label>
+      <div class="input-grid">
+        <div class="input-group">
+          <label>Fobbings/Porto (USD/t)</label>
+          <input type="number" id="inp-fobbings" value="8.00" step="0.10" oninput="calculate()">
+        </div>
+        <div class="input-group">
+          <label>Frete Interno (R$/t)</label>
+          <input type="number" id="inp-freight-brl" value="100.00" oninput="calculate()">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 1: Causality (Why this number?) -->
+  <details open>
+    <summary>Composição do Preço (Waterfall)</summary>
+    <div class="card" style="background: #fafafa; border:none;">
+      <div class="driver-row">
+        <span>Preço FOB Porto (USD/t)</span>
+        <span class="driver-val positive" id="disp-fob-usd">0.00</span>
+      </div>
+      <div class="driver-row">
+        <span>(-) Custos Portuários (USD/t)</span>
+        <span class="driver-val negative" id="disp-fobbings">0.00</span>
+      </div>
+      <div class="driver-row">
+        <span>(=) Preço FCA (Sobre Rodas) (USD/t)</span>
+        <span class="driver-val" id="disp-fca-usd">0.00</span>
+      </div>
+      <div class="driver-row">
+        <span>Conversão para Reais (x Câmbio)</span>
+        <span class="driver-val" id="disp-fca-brl">0.00</span>
+      </div>
+      <div class="driver-row">
+        <span>(-) Frete Interno (R$/t)</span>
+        <span class="driver-val negative" id="disp-freight">0.00</span>
+      </div>
+      <div class="driver-row" style="border-top: 2px solid #ddd; border-bottom: none; padding-top:8px;">
+        <span>(=) Preço EXW (Fazenda) (R$/t)</span>
+        <span class="driver-val" style="color:var(--primary)" id="disp-exw-ton">0.00</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- Layer 2: Technical Mechanics -->
+  <details>
+    <summary>Detalhes Técnicos & Fórmulas</summary>
+    <div class="card">
+      <p><strong>Fórmulas Utilizadas (Baseado nos Slides 30-33):</strong></p>
+      <ul style="font-size: 0.9rem; color: var(--text);">
+        <li><strong>FOB (USD/t):</strong> <code>(CBOT + Basis) * Fator_Conversão / 100</code></li>
+        <li><strong>FCA (USD/t):</strong> <code>FOB - Fobbings</code></li>
+        <li><strong>FCA (R$/t):</strong> <code>FCA_USD * Taxa_Câmbio</code></li>
+        <li><strong>EXW (R$/t):</strong> <code>FCA_BRL - Frete_Interno</code></li>
+        <li><strong>EXW (R$/sc):</strong> <code>EXW_Ton * 0.06</code> (ou divisão pelo peso da saca)</li>
+      </ul>
+      <p><strong>Fatores de Conversão (ANEC):</strong></p>
+      <ul>
+        <li>Soja: <span id="lbl-factor-soy">36.7454</span> bu/t</li>
+        <li>Milho: <span id="lbl-factor-corn">39.3678</span> bu/t</li>
+      </ul>
+    </div>
+  </details>
+
+  <!-- Layer 3: Assumptions / Audit -->
+  <details>
+    <summary>Auditoria de Dados (JSON)</summary>
+    <div class="card">
+      <p>Dados internos utilizados para cálculo:</p>
+      <pre id="audit-json"></pre>
+    </div>
+  </details>
+
+</div>
+
+<script>
+  // --- Initialization ---
+  const dataCore = JSON.parse(document.getElementById('data-core').textContent);
+  let currentCommodity = 'SOYBEAN'; // Default
+
+  // DOM Elements
+  const els = {
+    cbot: document.getElementById('inp-cbot'),
+    basis: document.getElementById('inp-basis'),
+    fx: document.getElementById('inp-fx'),
+    fobbings: document.getElementById('inp-fobbings'),
+    freightBrl: document.getElementById('inp-freight-brl'),
+    
+    // Outputs
+    resPrice: document.getElementById('result-price'),
+    dispFobUsd: document.getElementById('disp-fob-usd'),
+    dispFobbings: document.getElementById('disp-fobbings'),
+    dispFcaUsd: document.getElementById('disp-fca-usd'),
+    dispFcaBrl: document.getElementById('disp-fca-brl'),
+    dispFreight: document.getElementById('disp-freight'),
+    dispExwTon: document.getElementById('disp-exw-ton'),
+    
+    audit: document.getElementById('audit-json'),
+    btns: document.querySelectorAll('.mode-btn')
+  };
+
+  // --- Logic ---
+
+  function setCommodity(type) {
+    currentCommodity = type;
+    
+    // Update UI buttons
+    els.btns.forEach(btn => btn.classList.remove('active'));
+    const activeBtn = Array.from(els.btns).find(b => b.textContent.includes(type === 'SOYBEAN' ? 'Soja' : 'Milho'));
+    if(activeBtn) activeBtn.classList.add('active');
+
+    // Update defaults if needed (optional reset)
+    // For now we keep user inputs as they might want to compare using same FX/Logistics
+    
+    calculate();
+  }
+
+  function formatMoney(val, currency) {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: currency });
+  }
+
+  function calculate() {
+    // 1. Get Inputs
+    const cbot = parseFloat(els.cbot.value) || 0;
+    const basis = parseFloat(els.basis.value) || 0;
+    const fx = parseFloat(els.fx.value) || 0;
+    const fobbingsUsd = parseFloat(els.fobbings.value) || 0;
+    const freightBrl = parseFloat(els.freightBrl.value) || 0;
+
+    // 2. Get Constants
+    const factors = dataCore.constants[currentCommodity];
+    const buToTon = factors.bushel_to_ton_anec; // Using ANEC as per slide 26/34
+
+    // 3. Calculate FOB Port Price (USD/t)
+    // Formula: (CBOT + Basis) / 100 * Factor
+    // Note: CBOT is in cents, need dollars for multiplication logic or divide result
+    const flatPriceCents = cbot + basis;
+    const fobUsdTon = (flatPriceCents / 100) * buToTon;
+
+    // 4. Calculate FCA (Free Carrier) / Sobre Rodas Porto
+    const fcaUsdTon = fobUsdTon - fobbingsUsd;
+    
+    // 5. Convert to BRL
+    const fcaBrlTon = fcaUsdTon * fx;
+
+    // 6. Calculate EXW (Ex-Works) / Fazenda
+    const exwBrlTon = fcaBrlTon - freightBrl;
+
+    // 7. Convert to Sack (60kg)
+    // 1 ton = 1000kg. Sack = 60kg. Factor = 0.06
+    const exwBrlSack = exwBrlTon * 0.06;
+
+    // --- Update UI ---
+    
+    // Layer 0
+    els.resPrice.textContent = formatMoney(exwBrlSack, 'BRL');
+    if (exwBrlSack < 0) els.resPrice.style.color = '#ff6b6b';
+    else els.resPrice.style.color = 'white';
+
+    // Layer 1
+    els.dispFobUsd.textContent = formatMoney(fobUsdTon, 'USD');
+    els.dispFobbings.textContent = formatMoney(fobbingsUsd, 'USD');
+    els.dispFcaUsd.textContent = formatMoney(fcaUsdTon, 'USD');
+    els.dispFcaBrl.textContent = formatMoney(fcaBrlTon, 'BRL');
+    els.dispFreight.textContent = formatMoney(freightBrl, 'BRL');
+    els.dispExwTon.textContent = formatMoney(exwBrlTon, 'BRL');
+
+    // Layer 3 (Audit)
+    els.audit.textContent = JSON.stringify({
+      active_commodity: currentCommodity,
+      factors_used: factors,
+      calculation: {
+        flat_price_cents: flatPriceCents,
+        fob_usd_ton: fobUsdTon.toFixed(4),
+        fca_usd_ton: fcaUsdTon.toFixed(4),
+        exw_brl_ton: exwBrlTon.toFixed(4),
+        exw_brl_sack: exwBrlSack.toFixed(4)
+      }
+    }, null, 2);
+    
+    // Persistence
+    saveState();
+  }
+
+  function saveState() {
+    const state = {
+      cbot: els.cbot.value,
+      basis: els.basis.value,
+      fx: els.fx.value,
+      fobbings: els.fobbings.value,
+      freightBrl: els.freightBrl.value,
+      commodity: currentCommodity
+    };
+    localStorage.setItem('agri_ppe_calc_v1', JSON.stringify(state));
+  }
+
+  function loadState() {
+    const saved = localStorage.getItem('agri_ppe_calc_v1');
+    if (saved) {
+      try {
+        const state = JSON.parse(saved);
+        els.cbot.value = state.cbot;
+        els.basis.value = state.basis;
+        els.fx.value = state.fx;
+        els.fobbings.value = state.fobbings;
+        els.freightBrl.value = state.freightBrl;
+        if(state.commodity) setCommodity(state.commodity);
+      } catch (e) { console.error('Error loading state', e); }
+    }
+    calculate();
+  }
+
+  // Start
+  loadState();
+
+</script>
+</body>
+</html>

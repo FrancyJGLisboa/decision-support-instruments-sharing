@@ -1,0 +1,513 @@
+<!--
+sfHTML Instrument: Soybean Crush Margin Simulator
+Purpose: Calculate Gross and Net Processing Margins (GPW/MBP) based on prices and yields.
+Methodology: Agrinvest Commodities (Slides 83-90)
+Publish as: filez/soybean-crush-simulator.html
+Repo: FrancyJGLisboa/decision-support-instruments-sharing
+-->
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulador de Crush Margin (Soja)</title>
+
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --accent: #d35400; /* Crush/Industrial feel */
+      --soy-gold: #f1c40f;
+      --oil-color: #e67e22;
+      --meal-color: #95a5a6;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --border: #e9ecef;
+      --success: #27ae60;
+      --danger: #c0392b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--primary);
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border: 1px solid var(--border);
+    }
+
+    /* Layer 0: The Big Number */
+    .decision-box {
+      text-align: center;
+      border-top: 4px solid var(--accent);
+    }
+
+    .big-number {
+      font-size: 3rem;
+      font-weight: 800;
+      margin: 10px 0;
+      color: var(--primary);
+    }
+
+    .sub-metric {
+      font-size: 1rem;
+      color: #7f8c8d;
+      font-weight: 500;
+    }
+
+    /* Input Grid */
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .input-group label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+
+    .input-wrapper {
+      display: flex;
+    }
+
+    .input-wrapper input {
+      flex: 2;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-right: none;
+      border-radius: 4px 0 0 4px;
+      font-size: 1rem;
+    }
+
+    .input-wrapper select {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ccc;
+      background: #eee;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.8rem;
+    }
+
+    /* Visual Bar for Layer 1 */
+    .share-bar-container {
+      height: 24px;
+      background: #eee;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      margin-top: 10px;
+    }
+
+    .share-segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: white;
+      font-weight: bold;
+      transition: width 0.3s ease;
+    }
+
+    /* Progressive Disclosure */
+    details {
+      margin-top: 10px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; font-weight: bold; }
+    details[open] summary::after { content: "-"; }
+
+    /* Audit Layer */
+    pre {
+      background: #2c3e50;
+      color: #ecf0f1;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.8rem;
+    }
+
+    .yield-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    
+    .fx-row {
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--border);
+    }
+
+  </style>
+
+  <script type="application/json" id="data-core">
+  {
+    "version": "1.0.0",
+    "source": "Agrinvest Methodology (Slides 83-90)",
+    "defaults": {
+      "yields": {
+        "meal": 77.0,
+        "oil": 19.0
+      },
+      "industrial_cost": 40.00,
+      "fx": 5.50
+    },
+    "conversions": {
+      "bushel_soy": 0.0272155, 
+      "short_ton": 0.907185,
+      "lb_to_mt": 0.000453592
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div class="container">
+  
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <h2 style="margin:0; color:var(--primary);">Simulador Crush Margin</h2>
+    <span style="font-size:0.8rem; background: #ddd; padding: 4px 8px; border-radius:4px;">Soja</span>
+  </div>
+
+  <!-- Global Settings (FX) -->
+  <div class="fx-row input-group">
+    <label>Câmbio (BRL/USD)</label>
+    <input type="number" id="inp-fx" value="5.50" step="0.01" oninput="calculate()">
+  </div>
+
+  <!-- Main Inputs -->
+  <div class="price-grid">
+    <div class="input-group">
+      <label>Preço Grão (Soja)</label>
+      <div class="input-wrapper">
+        <input type="number" id="inp-grain" value="1150" oninput="calculate()">
+        <select id="unit-grain" onchange="calculate()">
+          <option value="cbu">¢/bu</option>
+          <option value="usdmt">USD/t</option>
+          <option value="brlsc">R$/sc</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>Preço Farelo (Meal)</label>
+      <div class="input-wrapper">
+        <input type="number" id="inp-meal" value="390" oninput="calculate()">
+        <select id="unit-meal" onchange="calculate()">
+          <option value="usdst">USD/st</option>
+          <option value="usdmt">USD/t</option>
+          <option value="brlt">R$/t</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label>Preço Óleo (Oil)</label>
+      <div class="input-wrapper">
+        <input type="number" id="inp-oil" value="45" oninput="calculate()">
+        <select id="unit-oil" onchange="calculate()">
+          <option value="clb">¢/lb</option>
+          <option value="usdmt">USD/t</option>
+          <option value="brlt">R$/t</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYER 0: The Decision (Gross Margin) -->
+  <div class="card decision-box">
+    <div style="font-size:0.9rem; margin-top:10px; font-weight:700;">MARGEM BRUTA (GPW)</div>
+    <div class="big-number" id="res-gpw">$0.00</div>
+    <div class="sub-metric">Margem Líquida Estimada: <span id="res-net">$0.00</span> / ton</div>
+  </div>
+
+  <!-- LAYER 1: Value Contribution -->
+  <details open>
+    <summary>Camada 1: Contribuição de Valor (Oil Share)</summary>
+    <div class="card" style="border:none; box-shadow:none; padding: 10px 0;">
+      <p style="margin:0 0 8px 0; font-size:0.9rem;">Como a receita do esmagamento é composta:</p>
+      
+      <div class="share-bar-container">
+        <div id="bar-meal" class="share-segment" style="background-color: var(--meal-color); width: 70%;">Farelo</div>
+        <div id="bar-oil" class="share-segment" style="background-color: var(--oil-color); width: 30%;">Óleo</div>
+      </div>
+      
+      <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:0.9rem;">
+        <span>Farelo: <strong id="val-meal-share">0%</strong></span>
+        <span>Oil Share: <strong id="val-oil-share" style="color:var(--accent)">0%</strong></span>
+      </div>
+      <div style="margin-top:12px; font-size:0.85rem; color:#666;">
+        <em>Nota:</em> Um "Oil Share" elevado (>35%) geralmente favorece esmagadores com alta eficiência de extração de óleo.
+      </div>
+    </div>
+  </details>
+
+  <!-- LAYER 2: Yields (User Defined) -->
+  <details>
+    <summary>Camada 2: Rendimentos Técnicos (Yields)</summary>
+    <div class="card">
+      <p style="font-size:0.85rem; margin-bottom:12px;">Ajuste conforme eficiência da planta industrial:</p>
+      <div class="yield-inputs">
+        <div class="input-group">
+          <label>Farelo (%)</label>
+          <input type="number" id="yld-meal" value="77.0" step="0.1" oninput="calculate()">
+        </div>
+        <div class="input-group">
+          <label>Óleo (%)</label>
+          <input type="number" id="yld-oil" value="19.0" step="0.1" oninput="calculate()">
+        </div>
+        <div class="input-group">
+          <label>Quebra/Casca (%)</label>
+          <input type="number" id="yld-loss" value="4.0" disabled style="background:#eee;">
+        </div>
+      </div>
+      <p style="font-size:0.8rem; color:red; margin-top:5px; display:none;" id="yield-warning">Atenção: A soma dos rendimentos deve ser 100% (Casca inclusa).</p>
+    </div>
+  </details>
+
+  <!-- LAYER 3: Costs & Audit -->
+  <details>
+    <summary>Camada 3: Custos & Auditoria</summary>
+    <div class="card">
+      <div class="input-group" style="max-width: 200px; margin-bottom:15px;">
+        <label>Custo Industrial (USD/t)</label>
+        <input type="number" id="inp-cost" value="40.00" oninput="calculate()">
+        <small style="color:#666;">Energia, Mão de obra, Hexano, Depreciação.</small>
+      </div>
+
+      <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+      
+      <strong>Auditoria de Cálculo (JSON)</strong>
+      <pre id="audit-log">Waiting for calculation...</pre>
+    </div>
+  </details>
+
+</div>
+
+<script>
+  // --- Initialization ---
+  const dataCore = JSON.parse(document.getElementById('data-core').textContent);
+  
+  // Constants
+  const MT_TO_BU = 36.7437; // Soybeans
+  const ST_TO_MT = 0.907185;
+  const LB_TO_MT = 0.000453592;
+  
+  // DOM Elements
+  const els = {
+    grain: { val: document.getElementById('inp-grain'), unit: document.getElementById('unit-grain') },
+    meal: { val: document.getElementById('inp-meal'), unit: document.getElementById('unit-meal') },
+    oil: { val: document.getElementById('inp-oil'), unit: document.getElementById('unit-oil') },
+    fx: document.getElementById('inp-fx'),
+    
+    yields: {
+      meal: document.getElementById('yld-meal'),
+      oil: document.getElementById('yld-oil'),
+      loss: document.getElementById('yld-loss')
+    },
+    
+    cost: document.getElementById('inp-cost'),
+    
+    results: {
+      gpw: document.getElementById('res-gpw'),
+      net: document.getElementById('res-net'),
+      mealShare: document.getElementById('val-meal-share'),
+      oilShare: document.getElementById('val-oil-share'),
+      barMeal: document.getElementById('bar-meal'),
+      barOil: document.getElementById('bar-oil')
+    },
+    
+    audit: document.getElementById('audit-log')
+  };
+
+  // --- Logic ---
+
+  function convertToUsdTon(val, unit, type) {
+    if (!val) return 0;
+    const fx = parseFloat(els.fx.value) || 1;
+
+    // Grain Conversions
+    if (type === 'grain') {
+      if (unit === 'usdmt') return val;
+      if (unit === 'cbu') return (val / 100) * MT_TO_BU; // cents to USD * bu/ton
+      if (unit === 'brlsc') return (val / fx) / 0.06; // (BRL/sc / FX) / 0.06t
+    }
+
+    // Meal Conversions
+    if (type === 'meal') {
+      if (unit === 'usdmt') return val;
+      if (unit === 'usdst') return val / ST_TO_MT;
+      if (unit === 'brlt') return val / fx;
+    }
+
+    // Oil Conversions
+    if (type === 'oil') {
+      if (unit === 'usdmt') return val;
+      if (unit === 'clb') return (val / 100) / LB_TO_MT; // cents to USD / lb_factor
+      if (unit === 'brlt') return val / fx;
+    }
+
+    return 0;
+  }
+
+  function calculate() {
+    // 1. Get Values
+    const grainRaw = parseFloat(els.grain.val.value);
+    const mealRaw = parseFloat(els.meal.val.value);
+    const oilRaw = parseFloat(els.oil.val.value);
+    const indCost = parseFloat(els.cost.value) || 0;
+
+    // 2. Normalize to USD/MT
+    const grainPrice = convertToUsdTon(grainRaw, els.grain.unit.value, 'grain');
+    const mealPrice = convertToUsdTon(mealRaw, els.meal.unit.value, 'meal');
+    const oilPrice = convertToUsdTon(oilRaw, els.oil.unit.value, 'oil');
+
+    // 3. Get Yields
+    const yMeal = parseFloat(els.yields.meal.value) / 100;
+    const yOil = parseFloat(els.yields.oil.value) / 100;
+    
+    // Calc Loss
+    const yLoss = 1 - (yMeal + yOil);
+    els.yields.loss.value = (yLoss * 100).toFixed(1);
+
+    // 4. Calculate Gross Product Value (GPV) - Revenue per ton crushed
+    const revMeal = mealPrice * yMeal;
+    const revOil = oilPrice * yOil;
+    const totalRev = revMeal + revOil;
+
+    // 5. Calculate Margins
+    const gpw = totalRev - grainPrice; // Gross Processing Worth (Margem Bruta)
+    const netMargin = gpw - indCost;   // Margem Líquida
+
+    // 6. Calculate Contributions (Shares)
+    const oilShare = (revOil / totalRev) * 100;
+    const mealShare = (revMeal / totalRev) * 100;
+
+    // --- Update UI ---
+
+    // Layer 0
+    els.results.gpw.textContent = gpw.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) + " /t";
+    els.results.gpw.style.color = gpw >= 0 ? 'var(--primary)' : 'var(--danger)';
+    
+    els.results.net.textContent = netMargin.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    els.results.net.style.color = netMargin >= 0 ? 'var(--success)' : 'var(--danger)';
+
+    // Layer 1 (Visuals)
+    if (totalRev > 0) {
+      els.results.oilShare.textContent = oilShare.toFixed(1) + "%";
+      els.results.mealShare.textContent = mealShare.toFixed(1) + "%";
+      
+      els.results.barOil.style.width = oilShare + "%";
+      els.results.barMeal.style.width = mealShare + "%";
+      els.results.barOil.textContent = oilShare > 15 ? "Óleo" : "";
+    }
+
+    // Layer 3 (Audit)
+    const auditData = {
+      timestamp: new Date().toISOString(),
+      inputs: {
+        grain_raw: grainRaw,
+        meal_raw: mealRaw,
+        oil_raw: oilRaw,
+        fx: els.fx.value
+      },
+      normalized_usd_ton: {
+        grain: grainPrice.toFixed(2),
+        meal: mealPrice.toFixed(2),
+        oil: oilPrice.toFixed(2)
+      },
+      yields: {
+        meal_pct: (yMeal*100).toFixed(1),
+        oil_pct: (yOil*100).toFixed(1)
+      },
+      financials: {
+        revenue_meal: revMeal.toFixed(2),
+        revenue_oil: revOil.toFixed(2),
+        total_revenue: totalRev.toFixed(2),
+        gross_margin: gpw.toFixed(2),
+        industrial_cost: indCost.toFixed(2),
+        net_margin: netMargin.toFixed(2)
+      }
+    };
+    els.audit.textContent = JSON.stringify(auditData, null, 2);
+
+    saveState();
+  }
+
+  function saveState() {
+    const state = {
+      grain: els.grain.val.value, grainU: els.grain.unit.value,
+      meal: els.meal.val.value, mealU: els.meal.unit.value,
+      oil: els.oil.val.value, oilU: els.oil.unit.value,
+      fx: els.fx.value,
+      yMeal: els.yields.meal.value,
+      yOil: els.yields.oil.value,
+      cost: els.cost.value
+    };
+    localStorage.setItem('soy_crush_v1', JSON.stringify(state));
+  }
+
+  function loadState() {
+    const saved = localStorage.getItem('soy_crush_v1');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        if(s.grain) els.grain.val.value = s.grain;
+        if(s.grainU) els.grain.unit.value = s.grainU;
+        if(s.meal) els.meal.val.value = s.meal;
+        if(s.mealU) els.meal.unit.value = s.mealU;
+        if(s.oil) els.oil.val.value = s.oil;
+        if(s.oilU) els.oil.unit.value = s.oilU;
+        if(s.fx) els.fx.value = s.fx;
+        if(s.yMeal) els.yields.meal.value = s.yMeal;
+        if(s.yOil) els.yields.oil.value = s.yOil;
+        if(s.cost) els.cost.value = s.cost;
+      } catch(e) { console.error(e); }
+    }
+    calculate();
+  }
+
+  // Init
+  loadState();
+
+</script>
+</body>
+</html>
