@@ -1,0 +1,1391 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Ferramenta de análise de anomalias climáticas (Precipitação/Temperatura) com previsão GFS/ECMWF e suporte a multi-idioma total.">
+  <title>Anomalias Climáticas: Histórico & Forecast (v5.2-International)</title>
+  <style>
+    /* =========================================
+       1. CSS VARIABLES & THEME
+       ========================================= */
+    :root {
+      /* Base Palette - Clean & Professional */
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      
+      /* Semantic Modes */
+      --mode-hist-bg: #f1f5f9;
+      --mode-hist-accent: #334155;
+      --mode-fore-bg: #f3e8ff;
+      --mode-fore-accent: #7c3aed; /* Violet for Forecast */
+      
+      /* Action Colors */
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-text: #ffffff;
+      
+      /* Severity/Risk Colors */
+      --ok-bg: #dcfce7; --ok-border: #86efac; --ok-text: #166534;
+      --warn-bg: #fef9c3; --warn-border: #fcd34d; --warn-text: #854d0e;
+      --bad-bg: #fee2e2; --bad-border: #fca5a5; --bad-text: #991b1b;
+
+      /* UI Constants */
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+      
+      /* Typography */
+      --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", "Fira Code", monospace;
+    }
+
+    /* Global Reset */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* =========================================
+       2. LAYOUT & GRID STRUCTURE
+       ========================================= */
+    .app-container {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header-titles h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+    .header-titles .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .version-tag {
+      background: var(--accent);
+      color: white;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 1024px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* =========================================
+       3. UI COMPONENTS (Cards, Inputs, Buttons)
+       ========================================= */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      margin-bottom: 20px;
+      transition: box-shadow 0.2s;
+    }
+    .card:hover { box-shadow: var(--shadow-md); }
+
+    .card-header {
+      padding: 14px 18px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-body { padding: 18px; }
+
+    /* Form Elements */
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+    label:first-child { margin-top: 0; }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: var(--font-sans);
+      background: #fff;
+      transition: all 0.2s;
+      color: var(--text);
+    }
+    textarea { font-family: var(--font-mono); font-size: 12px; }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Buttons */
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid var(--border);
+      background: white;
+      color: var(--text);
+      gap: 6px;
+    }
+    button:hover { background: #f1f5f9; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    button.primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border-color: transparent;
+      box-shadow: 0 2px 4px rgba(37,99,235,0.2);
+    }
+    button.primary:hover { background: var(--accent-hover); }
+
+    button.small { padding: 6px 12px; font-size: 12px; height: 32px; }
+
+    /* =========================================
+       4. SPECIFIC MODULES (Mode Switch, KPIs)
+       ========================================= */
+    /* Mode Switcher */
+    .mode-switcher {
+      display: flex;
+      background: #e2e8f0;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 20px;
+    }
+    .mode-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .mode-btn.active {
+      background: #fff;
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .mode-btn[data-mode="forecast"].active {
+      color: var(--mode-fore-accent);
+    }
+    
+    /* KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+    }
+    .kpi-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .kpi-value { font-size: 32px; font-weight: 800; color: var(--text); line-height: 1.1; margin-bottom: 4px; }
+    .kpi-sub { font-size: 12px; color: var(--muted); }
+    
+    .kpi-value.extreme { color: var(--bad-text); }
+    .kpi-value.elevated { color: var(--warn-text); }
+    .kpi-value.normal { color: var(--ok-text); }
+
+    /* Risk Banner */
+    .risk-banner {
+      padding: 16px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+    .risk-banner.extreme { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+    .risk-banner.elevated { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
+    .risk-banner.normal { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
+    
+    .risk-icon { font-size: 24px; line-height: 1; margin-top: -2px; }
+    .risk-content h4 { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+    .risk-content p { margin: 0; font-size: 13px; opacity: 0.9; }
+
+    /* Chart Area */
+    .plot-wrapper {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid var(--border);
+    }
+    .plot-header {
+      position: absolute;
+      top: 12px; left: 12px; right: 12px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .quadrant-legend {
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(2px);
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.3;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    #chart-tooltip {
+      background: rgba(15, 23, 42, 0.95);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      opacity: 0;
+      transition: opacity 0.1s;
+      white-space: pre-line;
+    }
+
+    /* Simulation Panel */
+    .sim-panel {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .sim-slider-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .sim-slider-row label { margin: 0; min-width: 40px; }
+    .sim-slider-row input { flex: 1; cursor: pointer; }
+    .sim-val { font-family: var(--font-mono); font-size: 11px; font-weight: 700; width: 45px; text-align: right; }
+
+    /* Tables & Lists */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-weight: 600; color: var(--muted); background: #f8fafc; font-size: 11px; text-transform: uppercase; }
+    .mono { font-family: var(--font-mono); font-size: 12px; }
+
+    /* Details Accordion */
+    details {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    summary {
+      background: #f8fafc;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    summary:hover { background: #f1f5f9; }
+    .details-content { padding: 14px; background: #fff; border-top: 1px solid var(--border); }
+
+    /* Helper Classes */
+    .hidden { display: none !important; }
+    .text-center { text-align: center; }
+    .lang-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .lang-btn { border: none; background: #fff; font-size: 12px; padding: 6px 10px; cursor: pointer; }
+    .lang-btn.active { background: #e2e8f0; font-weight: 700; }
+
+    /* =========================================
+       5. PRINT MEDIA (Native PDF Report)
+       ========================================= */
+    @media print {
+      body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .app-container { max-width: 100%; padding: 0; margin: 0; }
+      
+      /* Hide Interactive Elements */
+      .no-print, 
+      .controls-col, 
+      .mode-switcher, 
+      header button, 
+      .lang-toggle,
+      details summary {
+        display: none !important;
+      }
+      
+      /* Force Details Open */
+      details { border: none; margin: 0; }
+      details[open] .details-content { display: block; padding: 0; border: none; }
+      
+      /* Layout for Print */
+      .main-grid { display: block; }
+      .charts-col { width: 100%; }
+      .card { border: none; box-shadow: none; margin-bottom: 20px; break-inside: avoid; }
+      
+      /* Chart Sizing */
+      #svg-chart { height: 500px; width: 100%; }
+      
+      /* Footer */
+      .report-footer {
+        display: block !important;
+        margin-top: 40px;
+        border-top: 1px solid #000;
+        padding-top: 10px;
+        font-size: 10px;
+        color: #000;
+      }
+    }
+    .report-footer { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-titles">
+      <h1 data-i18n="header.title">Anomalias Climáticas em Quadrantes</h1>
+      <div class="subtitle">
+        <span class="version-tag">v5.2</span>
+        <span>•</span>
+        <span data-i18n="header.subtitle">Histórico + Forecast (GFS/ECMWF)</span>
+      </div>
+    </div>
+    
+    <div class="header-actions">
+      <!-- Language Toggle -->
+      <div class="lang-toggle">
+        <button class="lang-btn active" data-lang="pt">PT</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="es">ES</button>
+      </div>
+      
+      <!-- PDF Export (Print) -->
+      <button class="primary small" id="btn-print" data-i18n-title="action.pdf_title">
+        <span style="font-size:16px">📄</span> PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- KPI SECTION -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label" data-i18n="kpi.severity">Severidade (Sigma)</div>
+      <div class="kpi-value" id="kpi-severity-val">—</div>
+      <div class="kpi-sub" id="kpi-severity-ctx" data-i18n="kpi.no_data">Sem dados</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label" data-i18n="kpi.regime">Regime / Quadrante</div>
+      <div class="kpi-value" id="kpi-regime-val" style="font-size:26px">—</div>
+      <div class="kpi-sub" id="kpi-regime-ctx" data-i18n="kpi.pattern">Padrão Climático</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label" data-i18n="kpi.source">Fonte de Dados</div>
+      <div class="kpi-value" id="kpi-source-val" style="font-size:26px">—</div>
+      <div class="kpi-sub" id="kpi-source-ctx" data-i18n="kpi.model_type">Modelo/Arquivo</div>
+    </div>
+  </div>
+
+  <!-- RISK BANNER -->
+  <div id="risk-banner" class="risk-banner hidden">
+    <div class="risk-icon" id="risk-icon">⚠️</div>
+    <div class="risk-content">
+      <h4 id="risk-title">Risco Detectado</h4>
+      <p id="risk-desc">Descrição do risco.</p>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    
+    <!-- LEFT: CONTROLS (Settings) -->
+    <div class="controls-col">
+      
+      <div class="card">
+        <div class="card-header" data-i18n="panel.config">Configuração & Dados</div>
+        <div class="card-body">
+          
+          <!-- Mode Switcher -->
+          <label data-i18n="input.mode">Modo de Operação</label>
+          <div class="mode-switcher">
+            <button class="mode-btn active" data-mode="historical" onclick="APP.setMode('historical')">
+              <span>⏪</span> <span data-i18n="mode.historical">Histórico</span>
+            </button>
+            <button class="mode-btn" data-mode="forecast" onclick="APP.setMode('forecast')">
+              <span>🔮</span> <span data-i18n="mode.forecast">Forecast</span>
+            </button>
+          </div>
+
+          <!-- Inputs -->
+          <label data-i18n="input.coords">Coordenadas (Lat, Lon)</label>
+          <textarea id="inp-coords" rows="1" spellcheck="false" data-i18n-placeholder="input.coords_ph">28.044,-16.572</textarea>
+          
+          <div class="row">
+            <div>
+              <label data-i18n="input.window">Janela (Dias)</label>
+              <select id="inp-window">
+                <option value="7" data-i18n="opts.7d">7 dias</option>
+                <option value="15" selected data-i18n="opts.15d">15 dias</option>
+                <option value="30" data-i18n="opts.30d">30 dias</option>
+              </select>
+            </div>
+            
+            <!-- Dynamic Inputs -->
+            <div id="group-date">
+              <label data-i18n="input.date">Data Final (Ref)</label>
+              <input type="date" id="inp-date">
+            </div>
+            <div id="group-model" class="hidden">
+              <label data-i18n="input.model">Modelo (Forecast)</label>
+              <select id="inp-model">
+                <option value="best_match" data-i18n="model.best">Auto (Best Match)</option>
+                <option value="gfs_seamless" data-i18n="model.gfs">NOAA GFS (Global)</option>
+                <option value="ecmwf_ifs04" data-i18n="model.ecmwf">ECMWF IFS 0.4°</option>
+                <option value="icon_seamless" data-i18n="model.icon">DWD ICON (EU)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Main Action -->
+          <button class="primary" id="btn-run" style="width:100%; margin-top:20px; height:44px;">
+            <span data-i18n="action.calculate">Calcular e Plotar</span>
+          </button>
+          
+          <div id="status-bar" style="margin-top:12px; font-size:11px; color:var(--muted); min-height:18px;"></div>
+        </div>
+      </div>
+
+      <!-- Simulation -->
+      <div class="card no-print">
+        <div class="card-header">
+          <span data-i18n="panel.sim">Simulação (What-If)</span>
+        </div>
+        <div class="card-body">
+          <p class="mono" style="font-size:11px; margin-top:0; color:var(--muted)" data-i18n="sim.desc">
+            Ajuste manualmente precipitação e temperatura para testar cenários.
+          </p>
+          <div class="sim-panel">
+            <div class="sim-slider-row">
+              <label data-i18n="sim.precip">Precip</label>
+              <input type="range" id="sim-p" min="-100" max="100" value="0">
+              <div class="sim-val"><span id="lbl-sim-p">0</span>%</div>
+            </div>
+            <div class="sim-slider-row">
+              <label data-i18n="sim.temp">Temp</label>
+              <input type="range" id="sim-t" min="-5" max="5" step="0.1" value="0">
+              <div class="sim-val"><span id="lbl-sim-t">0.0</span>°C</div>
+            </div>
+            <div class="text-center" style="margin-top:8px">
+              <button class="small" id="btn-reset-sim" data-i18n="action.reset">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced -->
+      <details class="no-print">
+        <summary data-i18n="panel.advanced">Opções Avançadas</summary>
+        <div class="details-content">
+          <label data-i18n="input.start_year">Ano Inicial do Baseline</label>
+          <input type="number" id="inp-start-year" value="1981" min="1950" max="2020">
+          
+          <label data-i18n="input.manual">Override Manual (CSV)</label>
+          <textarea id="inp-manual" data-i18n-placeholder="input.manual_ph"></textarea>
+          <div style="margin-top:8px; display:flex; gap:8px">
+            <button class="small" id="btn-apply-manual" data-i18n="action.apply">Aplicar CSV</button>
+            <button class="small" id="btn-clear-cache" data-i18n="action.clear_cache">Limpar Cache</button>
+          </div>
+        </div>
+      </details>
+      
+      <!-- Glossary -->
+      <details class="no-print">
+        <summary data-i18n="panel.glossary">Glossário Metodológico</summary>
+        <div class="details-content">
+          <div style="font-size:12px; color:var(--muted);">
+            <p><strong data-i18n="gloss.base">Baseline:</strong> <span data-i18n="gloss.base_def">Média histórica.</span></p>
+            <p><strong data-i18n="gloss.anom">Anomalia:</strong> <span data-i18n="gloss.anom_def">Desvio percentual (P) ou absoluto (T).</span></p>
+            <p><strong data-i18n="gloss.sigma">Severidade (Sigma):</strong> <span data-i18n="gloss.sigma_def">Distância euclidiana normalizada.</span></p>
+            <p><strong data-i18n="gloss.regime">Regimes:</strong></p>
+            <ul style="padding-left:16px; margin:4px 0;">
+              <li><strong data-i18n="quad.wet_warm">Wet-Warm</strong>: <span data-i18n="quad.wet_warm_desc">Úmido e Quente</span></li>
+              <li><strong data-i18n="quad.dry_warm">Dry-Warm</strong>: <span data-i18n="quad.dry_warm_desc">Seco e Quente</span></li>
+              <li><strong data-i18n="quad.wet_cold">Wet-Cold</strong>: <span data-i18n="quad.wet_cold_desc">Úmido e Frio</span></li>
+              <li><strong data-i18n="quad.dry_cold">Dry-Cold</strong>: <span data-i18n="quad.dry_cold_desc">Seco e Frio</span></li>
+            </ul>
+          </div>
+        </div>
+      </details>
+
+    </div>
+
+    <!-- RIGHT: VISUALIZATION -->
+    <div class="charts-col">
+      <div class="card">
+        <div class="card-header">
+          <span data-i18n="panel.chart">Gráfico de Dispersão (Quadrantes)</span>
+          <div class="no-print">
+            <button class="small" id="btn-dl-svg">SVG</button>
+            <button class="small" id="btn-dl-csv">CSV</button>
+          </div>
+        </div>
+        
+        <div class="card-body" style="padding:0">
+          <div class="plot-wrapper">
+            <div class="plot-header">
+              <div class="quadrant-legend">
+                <strong data-i18n="quad.wet_warm">Wet-Warm</strong> ↔ <strong data-i18n="quad.dry_warm">Dry-Warm</strong><br>
+                <strong data-i18n="quad.wet_cold">Wet-Cold</strong> ↔ <strong data-i18n="quad.dry_cold">Dry-Cold</strong>
+              </div>
+              <div id="chart-tooltip"></div>
+            </div>
+            <!-- SVG Container -->
+            <svg id="svg-chart" viewBox="0 0 900 550" preserveAspectRatio="xMidYMid meet" style="width:100%; height:auto; display:block;"></svg>
+          </div>
+        </div>
+        
+        <div class="card-body">
+          <div class="row">
+            <div>
+              <h4 style="margin:0 0 10px; font-size:13px; font-weight:700" data-i18n="panel.details">Detalhes do Ponto Principal</h4>
+              <table id="tbl-details">
+                <tr><td colspan="2" class="text-center">—</td></tr>
+              </table>
+            </div>
+            <div>
+              <h4 style="margin:0 0 10px; font-size:13px; font-weight:700" data-i18n="panel.history">Contexto (Top 5 Severidade)</h4>
+              <div style="max-height:200px; overflow-y:auto">
+                <table id="tbl-history"></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="report-footer">
+        <p><span data-i18n="footer.gen">Gerado por Anomalias Climáticas v5.2.</span> Open-Meteo API.</p>
+        <p>Data: <span id="print-date"></span></p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- =========================================
+     JAVASCRIPT LOGIC
+     ========================================= -->
+<script>
+/**
+ * ANOMALIAS CLIMÁTICAS v5.2 INTERNATIONAL
+ * 
+ * 1. DICTIONARY: Complete recursive mapping for UI texts.
+ * 2. APP STATE: Manages language, mode, and data.
+ * 3. LOGIC: Fetching, Math, Rendering.
+ */
+
+/* --- 1. FULL DICTIONARY --- */
+const DICTIONARY = {
+  pt: {
+    header: { title: "Anomalias Climáticas em Quadrantes", subtitle: "Histórico + Forecast (GFS/ECMWF)" },
+    mode: { historical: "Histórico", forecast: "Forecast (16d)" },
+    input: { 
+      mode: "Modo de Operação", coords: "Coordenadas (Lat, Lon)", coords_ph: "ex: 28.044,-16.572",
+      window: "Janela de Análise", date: "Data de Referência", model: "Modelo Forecast", 
+      start_year: "Ano Inicial do Baseline", manual: "Override Manual (CSV)", manual_ph: "year,pr,ta\n2020,10.5,22.1"
+    },
+    opts: { "7d": "7 dias", "15d": "15 dias", "30d": "30 dias" },
+    model: { best: "Auto (Melhor Correspondência)", gfs: "NOAA GFS (Global)", ecmwf: "ECMWF IFS 0.4°", icon: "DWD ICON (Europa)" },
+    action: { calculate: "Calcular e Plotar", reset: "Resetar", apply: "Aplicar CSV", clear_cache: "Limpar Cache", pdf_title: "Gerar Relatório PDF" },
+    kpi: { 
+      severity: "Severidade (Sigma)", regime: "Regime / Quadrante", source: "Fonte de Dados", 
+      no_data: "Sem dados", pattern: "Padrão Climático", model_type: "Modelo/Arquivo"
+    },
+    panel: { config: "Configuração & Dados", sim: "Simulação (What-If)", advanced: "Opções Avançadas", glossary: "Glossário Metodológico", chart: "Gráfico de Dispersão", details: "Detalhes do Ponto", history: "Contexto Histórico" },
+    risk: { 
+      ext: "Risco Extremo", elev: "Risco Elevado", norm: "Normal",
+      desc_ext: "Sigma > 2.5. Evento estatisticamente raro.",
+      desc_elev: "Sigma > 1.5. Atenção necessária.",
+      desc_norm: "Variação dentro do desvio padrão esperado."
+    },
+    sim: { desc: "Ajuste manualmente precipitação e temperatura para testar cenários.", precip: "Precip", temp: "Temp" },
+    gloss: { 
+      base: "Baseline:", base_def: "Média histórica para a mesma janela.",
+      anom: "Anomalia:", anom_def: "Desvio em relação à média.",
+      sigma: "Severidade:", sigma_def: "Distância estatística do centro (0,0).",
+      regime: "Regimes:"
+    },
+    quad: { 
+      wet_warm: "Wet-Warm", wet_warm_desc: "Úmido e Quente",
+      dry_warm: "Dry-Warm", dry_warm_desc: "Seco e Quente",
+      wet_cold: "Wet-Cold", wet_cold_desc: "Úmido e Frio",
+      dry_cold: "Dry-Cold", dry_cold_desc: "Seco e Frio"
+    },
+    chart: { x: "Anomalia Precipitação (%) [← Úmido | Seco →]", y: "Anomalia Temperatura (°C)" },
+    table: { year: "Ano", pr_mm: "Precip (mm)", ta_c: "Temp (°C)", anom_p: "Anom P (%)", anom_t: "Anom T (°C)", sigma: "Sigma", sev: "Sev" },
+    footer: { gen: "Gerado por Anomalias Climáticas v5.2." },
+    status: { init: "Inicializando...", fetching_hist: "Buscando histórico...", fetching_fore: "Buscando previsão...", processing: "Processando...", done: "Concluído.", error: "Erro: " }
+  },
+  en: {
+    header: { title: "Climate Anomalies in Quadrants", subtitle: "Historical + Forecast (GFS/ECMWF)" },
+    mode: { historical: "Historical", forecast: "Forecast (16d)" },
+    input: { 
+      mode: "Operation Mode", coords: "Coordinates (Lat, Lon)", coords_ph: "e.g. 28.044,-16.572",
+      window: "Analysis Window", date: "Reference Date", model: "Forecast Model", 
+      start_year: "Baseline Start Year", manual: "Manual Override (CSV)", manual_ph: "year,pr,ta\n2020,10.5,22.1"
+    },
+    opts: { "7d": "7 days", "15d": "15 days", "30d": "30 days" },
+    model: { best: "Auto (Best Match)", gfs: "NOAA GFS (Global)", ecmwf: "ECMWF IFS 0.4°", icon: "DWD ICON (Europe)" },
+    action: { calculate: "Calculate & Plot", reset: "Reset", apply: "Apply CSV", clear_cache: "Clear Cache", pdf_title: "Generate PDF Report" },
+    kpi: { 
+      severity: "Severity (Sigma)", regime: "Regime / Quadrant", source: "Data Source", 
+      no_data: "No Data", pattern: "Climate Pattern", model_type: "Model/File"
+    },
+    panel: { config: "Configuration & Data", sim: "Simulation (What-If)", advanced: "Advanced Options", glossary: "Methodology Glossary", chart: "Scatter Plot", details: "Point Details", history: "Historical Context" },
+    risk: { 
+      ext: "Extreme Risk", elev: "Elevated Risk", norm: "Normal",
+      desc_ext: "Sigma > 2.5. Statistically rare event.",
+      desc_elev: "Sigma > 1.5. Attention required.",
+      desc_norm: "Variation within expected standard deviation."
+    },
+    sim: { desc: "Manually adjust precipitation and temperature to test scenarios.", precip: "Precip", temp: "Temp" },
+    gloss: { 
+      base: "Baseline:", base_def: "Historical mean for same window.",
+      anom: "Anomaly:", anom_def: "Deviation from mean.",
+      sigma: "Severity:", sigma_def: "Statistical distance from center (0,0).",
+      regime: "Regimes:"
+    },
+    quad: { 
+      wet_warm: "Wet-Warm", wet_warm_desc: "Wet and Warm",
+      dry_warm: "Dry-Warm", dry_warm_desc: "Dry and Warm",
+      wet_cold: "Wet-Cold", wet_cold_desc: "Wet and Cold",
+      dry_cold: "Dry-Cold", dry_cold_desc: "Dry and Cold"
+    },
+    chart: { x: "Precip Anomaly (%) [← Wet | Dry →]", y: "Temp Anomaly (°C)" },
+    table: { year: "Year", pr_mm: "Precip (mm)", ta_c: "Temp (°C)", anom_p: "Anom P (%)", anom_t: "Anom T (°C)", sigma: "Sigma", sev: "Sev" },
+    footer: { gen: "Generated by Climate Anomalies v5.2." },
+    status: { init: "Initializing...", fetching_hist: "Fetching history...", fetching_fore: "Fetching forecast...", processing: "Processing...", done: "Done.", error: "Error: " }
+  },
+  es: {
+    header: { title: "Anomalías Climáticas en Cuadrantes", subtitle: "Histórico + Previsión (GFS/ECMWF)" },
+    mode: { historical: "Histórico", forecast: "Previsión (16d)" },
+    input: { 
+      mode: "Modo de Operación", coords: "Coordenadas (Lat, Lon)", coords_ph: "ej: 28.044,-16.572",
+      window: "Ventana de Análisis", date: "Fecha de Referencia", model: "Modelo Previsión", 
+      start_year: "Año Inicio Baseline", manual: "Override Manual (CSV)", manual_ph: "year,pr,ta\n2020,10.5,22.1"
+    },
+    opts: { "7d": "7 días", "15d": "15 días", "30d": "30 días" },
+    model: { best: "Auto (Mejor Coincidencia)", gfs: "NOAA GFS (Global)", ecmwf: "ECMWF IFS 0.4°", icon: "DWD ICON (Europa)" },
+    action: { calculate: "Calcular y Graficar", reset: "Restablecer", apply: "Aplicar CSV", clear_cache: "Limpiar Caché", pdf_title: "Generar Informe PDF" },
+    kpi: { 
+      severity: "Severidad (Sigma)", regime: "Régimen / Cuadrante", source: "Fuente de Datos", 
+      no_data: "Sin datos", pattern: "Patrón Climático", model_type: "Modelo/Archivo"
+    },
+    panel: { config: "Configuración y Datos", sim: "Simulación (What-If)", advanced: "Opciones Avanzadas", glossary: "Glosario Metodológico", chart: "Gráfico de Dispersión", details: "Detalles del Punto", history: "Contexto Histórico" },
+    risk: { 
+      ext: "Riesgo Extremo", elev: "Riesgo Elevado", norm: "Normal",
+      desc_ext: "Sigma > 2.5. Evento estadísticamente raro.",
+      desc_elev: "Sigma > 1.5. Atención requerida.",
+      desc_norm: "Variación dentro de la desviación estándar."
+    },
+    sim: { desc: "Ajuste manualmente precipitación y temperatura para probar escenarios.", precip: "Precip", temp: "Temp" },
+    gloss: { 
+      base: "Línea Base:", base_def: "Media histórica para la misma ventana.",
+      anom: "Anomalía:", anom_def: "Desviación de la media.",
+      sigma: "Severidad:", sigma_def: "Distancia estadística del centro (0,0).",
+      regime: "Regímenes:"
+    },
+    quad: { 
+      wet_warm: "Húmedo-Cálido", wet_warm_desc: "Húmedo y Cálido",
+      dry_warm: "Seco-Cálido", dry_warm_desc: "Seco y Cálido",
+      wet_cold: "Húmedo-Frío", wet_cold_desc: "Húmedo y Frío",
+      dry_cold: "Seco-Frío", dry_cold_desc: "Seco y Frío"
+    },
+    chart: { x: "Anomalía Precipitación (%) [← Húmedo | Seco →]", y: "Anomalía Temperatura (°C)" },
+    table: { year: "Año", pr_mm: "Precip (mm)", ta_c: "Temp (°C)", anom_p: "Anom P (%)", anom_t: "Anom T (°C)", sigma: "Sigma", sev: "Sev" },
+    footer: { gen: "Generado por Anomalías Climáticas v5.2." },
+    status: { init: "Inicializando...", fetching_hist: "Buscando histórico...", fetching_fore: "Buscando previsión...", processing: "Procesando...", done: "Completado.", error: "Error: " }
+  }
+};
+
+const API = {
+  archive: "https://archive-api.open-meteo.com/v1/archive",
+  forecast: "https://api.open-meteo.com/v1/forecast"
+};
+
+let APP = {
+  lang: 'pt',
+  mode: 'historical', // 'historical' | 'forecast'
+  rawSeries: [],      // Holds all historical points
+  targetPoint: null,  // Holds the specific point being analyzed
+  baseline: null,     // {prMean, taMean, prStd, taStd}
+  simulation: { p: 0, t: 0 },
+  manualOverride: null
+};
+
+/* --- 2. INITIALIZATION --- */
+function init() {
+  document.getElementById('inp-date').valueAsDate = new Date();
+  
+  // Event Bindings
+  document.getElementById('btn-run').addEventListener('click', runAnalysis);
+  
+  // Mode Switch
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => APP.setMode(btn.dataset.mode));
+  });
+
+  // Lang Switch
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+  });
+
+  // Simulation
+  document.getElementById('sim-p').addEventListener('input', updateSim);
+  document.getElementById('sim-t').addEventListener('input', updateSim);
+  document.getElementById('btn-reset-sim').addEventListener('click', resetSim);
+
+  // Exports
+  document.getElementById('btn-print').addEventListener('click', () => {
+    document.getElementById('print-date').textContent = new Date().toLocaleString();
+    window.print();
+  });
+  document.getElementById('btn-dl-svg').addEventListener('click', downloadSVG);
+  document.getElementById('btn-dl-csv').addEventListener('click', downloadCSV);
+  
+  // Advanced
+  document.getElementById('btn-apply-manual').addEventListener('click', applyManual);
+  document.getElementById('btn-clear-cache').addEventListener('click', () => { localStorage.clear(); alert("Cache Cleared"); });
+
+  // Initial UI Set
+  setLang('pt');
+  APP.setMode('historical');
+}
+
+APP.setMode = function(mode) {
+  APP.mode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  
+  const isFore = (mode === 'forecast');
+  document.getElementById('group-date').classList.toggle('hidden', isFore);
+  document.getElementById('group-model').classList.toggle('hidden', !isFore);
+  
+  // Visual Hint
+  document.documentElement.style.setProperty('--accent', isFore ? '#7c3aed' : '#2563eb');
+  document.documentElement.style.setProperty('--accent-hover', isFore ? '#6d28d9' : '#1d4ed8');
+};
+
+/**
+ * DEEP TRANSLATION ENGINE
+ * Recursively looks for keys in the dictionary and applies to:
+ * - textContent (data-i18n)
+ * - placeholders (data-i18n-placeholder)
+ * - titles (data-i18n-title)
+ */
+function setLang(l) {
+  APP.lang = l;
+  const dict = DICTIONARY[l];
+  
+  // 1. Text Content
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const keys = el.dataset.i18n.split('.');
+    const val = keys.reduce((o, k) => o && o[k], dict);
+    if(val) el.textContent = val;
+  });
+
+  // 2. Placeholders
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const keys = el.dataset.i18nPlaceholder.split('.');
+    const val = keys.reduce((o, k) => o && o[k], dict);
+    if(val) el.placeholder = val;
+  });
+
+  // 3. Titles (Tooltips)
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const keys = el.dataset.i18nTitle.split('.');
+    const val = keys.reduce((o, k) => o && o[k], dict);
+    if(val) el.title = val;
+  });
+  
+  // 4. Update Button States
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+  
+  // 5. Re-render UI components that generate text via JS
+  if(APP.targetPoint) {
+    renderDashboard(); 
+  }
+}
+
+function getTrans(keyPath) {
+  return keyPath.split('.').reduce((o, k) => o && o[k], DICTIONARY[APP.lang]) || keyPath;
+}
+
+/* --- 3. DATA ENGINE (The Core Logic) --- */
+
+async function runAnalysis() {
+  const btn = document.getElementById('btn-run');
+  const status = document.getElementById('status-bar');
+  
+  try {
+    btn.disabled = true;
+    status.textContent = getTrans("status.init");
+    
+    // Inputs
+    const coordsStr = document.getElementById('inp-coords').value;
+    const [lat, lon] = coordsStr.split(',').map(n => parseFloat(n.trim()));
+    if(isNaN(lat) || isNaN(lon)) throw new Error("Coordenadas inválidas");
+
+    const windowDays = parseInt(document.getElementById('inp-window').value);
+    const startYear = parseInt(document.getElementById('inp-start-year').value);
+    
+    // Manual Override?
+    if (APP.manualOverride) {
+      APP.rawSeries = APP.manualOverride;
+      APP.targetPoint = APP.rawSeries[APP.rawSeries.length - 1];
+      processData();
+      renderDashboard();
+      status.textContent = getTrans("status.done");
+      btn.disabled = false;
+      return;
+    }
+
+    let targetStartDate, targetEndDate;
+
+    if (APP.mode === 'historical') {
+      const refDate = new Date(document.getElementById('inp-date').value);
+      targetEndDate = new Date(refDate);
+      targetStartDate = new Date(refDate);
+      targetStartDate.setDate(targetEndDate.getDate() - windowDays + 1);
+    } else {
+      // Forecast: Starts Today
+      const today = new Date();
+      targetStartDate = new Date(today);
+      targetEndDate = new Date(today);
+      targetEndDate.setDate(targetEndDate.getDate() + windowDays - 1);
+    }
+
+    // 1. Fetch History (Baseline)
+    status.textContent = getTrans("status.fetching_hist");
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for(let y = startYear; y < currentYear; y++) years.push(y);
+
+    const histData = await fetchClimatology(lat, lon, years, targetStartDate, targetEndDate, windowDays);
+    
+    // 2. Fetch Target
+    status.textContent = APP.mode === 'forecast' ? getTrans("status.fetching_fore") : "Buscando alvo...";
+    
+    let targetData;
+    if (APP.mode === 'historical') {
+      const y = targetEndDate.getFullYear();
+      // If target year is in history array, use it, else fetch
+      const existing = histData.find(d => d.year === y);
+      if(existing) targetData = existing; 
+      else targetData = await fetchWindow(lat, lon, y, targetStartDate, targetEndDate, 'archive');
+    } else {
+      const model = document.getElementById('inp-model').value;
+      targetData = await fetchForecastWindow(lat, lon, targetStartDate, targetEndDate, model);
+      targetData.year = "Forecast";
+      targetData.isForecast = true;
+    }
+
+    // 3. Merge & Process
+    if (!targetData) throw new Error("Sem dados para o alvo.");
+    
+    // Filter history to ensure clean baseline (exclude incomplete years)
+    const validHistory = histData.filter(d => d.count >= windowDays * 0.85); 
+    
+    APP.rawSeries = [...validHistory];
+    if (APP.mode === 'forecast' || !APP.rawSeries.find(d => d.year === targetData.year)) {
+      APP.rawSeries.push(targetData);
+    }
+    APP.targetPoint = targetData;
+
+    status.textContent = getTrans("status.processing");
+    processData();
+    renderDashboard();
+    status.textContent = getTrans("status.done");
+
+  } catch (err) {
+    console.error(err);
+    status.textContent = getTrans("status.error") + err.message;
+    alert(getTrans("status.error") + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Fetch 30+ years of a specific window efficiently
+async function fetchClimatology(lat, lon, years, sDate, eDate, winDays) {
+  // Extract Month/Day to replicate across years
+  const startM = sDate.getMonth();
+  const startD = sDate.getDate();
+  const endM = eDate.getMonth();
+  const endD = eDate.getDate();
+
+  // Batch requests to avoid blocking
+  const results = [];
+  const BATCH_SIZE = 5; 
+  
+  for(let i=0; i<years.length; i+=BATCH_SIZE) {
+    const batch = years.slice(i, i+BATCH_SIZE).map(y => {
+      // Reconstruct dates for year Y
+      const s = new Date(Date.UTC(y, startM, startD));
+      const e = new Date(Date.UTC(y, endM, endD));
+      if (e < s) e.setFullYear(y + 1); // Handle Year Wrap
+      
+      return fetchWindow(lat, lon, y, s, e, 'archive').catch(e => null);
+    });
+    
+    const responses = await Promise.all(batch);
+    responses.forEach(r => { if(r) results.push(r); });
+  }
+  return results;
+}
+
+// Low-level fetcher
+async function fetchWindow(lat, lon, year, sDate, eDate, source) {
+  const fmt = d => d.toISOString().split('T')[0];
+  const url = `${source==='archive'?API.archive:API.forecast}?latitude=${lat}&longitude=${lon}&start_date=${fmt(sDate)}&end_date=${fmt(eDate)}&daily=temperature_2m_mean,precipitation_sum&timezone=auto`;
+  
+  // Cache Key
+  const key = `v5.2_${lat}_${lon}_${fmt(sDate)}_${fmt(eDate)}_${source}`;
+  if(source === 'archive') {
+    const cached = localStorage.getItem(key);
+    if(cached) return JSON.parse(cached);
+  }
+
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`API Error ${res.status}`);
+  const json = await res.json();
+  
+  if(!json.daily || !json.daily.time) return null;
+  
+  // Aggregate
+  let prSum = 0, taSum = 0, count = 0;
+  json.daily.precipitation_sum.forEach((p, i) => {
+    const t = json.daily.temperature_2m_mean[i];
+    if(p !== null && t !== null) {
+      prSum += p;
+      taSum += t;
+      count++;
+    }
+  });
+
+  const obj = {
+    year: year,
+    pr: prSum,
+    ta: count ? taSum/count : 0,
+    count: count
+  };
+
+  if(source === 'archive' && count > 0) localStorage.setItem(key, JSON.stringify(obj));
+  return obj;
+}
+
+async function fetchForecastWindow(lat, lon, sDate, eDate, model) {
+  const fmt = d => d.toISOString().split('T')[0];
+  let url = `${API.forecast}?latitude=${lat}&longitude=${lon}&start_date=${fmt(sDate)}&end_date=${fmt(eDate)}&daily=temperature_2m_mean,precipitation_sum&timezone=auto`;
+  if(model !== 'best_match') url += `&models=${model}`;
+  
+  const res = await fetch(url);
+  const json = await res.json();
+  
+  let prSum = 0, taSum = 0, count = 0;
+  json.daily.precipitation_sum.forEach((p, i) => {
+    const t = json.daily.temperature_2m_mean[i];
+    if(p !== null && t !== null) {
+      prSum += p;
+      taSum += t;
+      count++;
+    }
+  });
+
+  return { year: 'Forecast', pr: prSum, ta: count ? taSum/count : 0, count, model };
+}
+
+/* --- 4. MATH & SIMULATION --- */
+function processData() {
+  // Separate baseline population (historical) from target
+  const history = APP.rawSeries.filter(d => !d.isForecast && d.year !== APP.targetPoint.year);
+  
+  // Calc Baseline
+  const prMean = history.reduce((a,b)=>a+b.pr,0)/history.length;
+  const taMean = history.reduce((a,b)=>a+b.ta,0)/history.length;
+  // Standard Deviation
+  const prStd = Math.sqrt(history.reduce((a,b)=>a+Math.pow(b.pr-prMean,2),0)/history.length) || 1;
+  const taStd = Math.sqrt(history.reduce((a,b)=>a+Math.pow(b.ta-taMean,2),0)/history.length) || 0.1;
+
+  APP.baseline = { prMean, taMean, prStd, taStd };
+
+  // Apply Calc to all points for plotting
+  APP.rawSeries.forEach(d => {
+    // Apply Simulation ONLY to target point
+    let pVal = d.pr;
+    let tVal = d.ta;
+    
+    if (d === APP.targetPoint) {
+      pVal = pVal * (1 + APP.simulation.p / 100);
+      tVal = tVal + APP.simulation.t;
+    }
+
+    d.pr_final = pVal;
+    d.ta_final = tVal;
+
+    // Anomaly
+    d.pr_anom = pVal - prMean;
+    // Percentage anomaly for Precip
+    d.pr_anom_pct = (prMean > 0.1) ? (d.pr_anom / prMean)*100 : (pVal > 0 ? 100 : 0);
+    
+    d.ta_anom = tVal - taMean;
+
+    // Sigma (Z-Score)
+    const zP = d.pr_anom / prStd;
+    const zT = d.ta_anom / taStd;
+    d.severity = Math.sqrt(zP*zP + zT*zT);
+
+    // Coordinates for Plot: X = -Precip (Dry Right), Y = Temp (Hot Top)
+    d.x = -d.pr_anom_pct;
+    d.y = d.ta_anom;
+
+    // Regime
+    if (d.x > 0 && d.y > 0) d.regimeKey = "dry_warm";
+    else if (d.x <= 0 && d.y > 0) d.regimeKey = "wet_warm";
+    else if (d.x > 0 && d.y <= 0) d.regimeKey = "dry_cold";
+    else d.regimeKey = "wet_cold";
+  });
+}
+
+function updateSim() {
+  APP.simulation.p = parseFloat(document.getElementById('sim-p').value);
+  APP.simulation.t = parseFloat(document.getElementById('sim-t').value);
+  document.getElementById('lbl-sim-p').textContent = APP.simulation.p;
+  document.getElementById('lbl-sim-t').textContent = APP.simulation.t.toFixed(1);
+  
+  if(APP.rawSeries.length) {
+    processData();
+    renderDashboard();
+  }
+}
+
+function resetSim() {
+  document.getElementById('sim-p').value = 0;
+  document.getElementById('sim-t').value = 0;
+  updateSim();
+}
+
+/* --- 5. RENDER & CHARTING --- */
+function renderDashboard() {
+  const target = APP.targetPoint;
+  
+  // 1. KPIs
+  const sevEl = document.getElementById('kpi-severity-val');
+  sevEl.textContent = target.severity.toFixed(2);
+  sevEl.className = 'kpi-value ' + (target.severity >= 2.5 ? 'extreme' : target.severity >= 1.5 ? 'elevated' : 'normal');
+  document.getElementById('kpi-severity-ctx').textContent = (APP.simulation.p !== 0 || APP.simulation.t !== 0) ? "Simulado" : (target.year);
+
+  document.getElementById('kpi-regime-val').textContent = getTrans(`quad.${target.regimeKey}`);
+  document.getElementById('kpi-regime-ctx').textContent = getTrans(`quad.${target.regimeKey}_desc`);
+  
+  document.getElementById('kpi-source-val').textContent = target.model || "Archive";
+  const srcKey = target.isForecast ? "mode.forecast" : "mode.historical";
+  document.getElementById('kpi-source-ctx').textContent = getTrans(srcKey);
+
+  // 2. Risk Banner
+  const banner = document.getElementById('risk-banner');
+  const bIcon = document.getElementById('risk-icon');
+  const bTitle = document.getElementById('risk-title');
+  const bDesc = document.getElementById('risk-desc');
+  
+  banner.classList.remove('hidden', 'extreme', 'elevated', 'normal');
+  let riskKey = "norm";
+  if (target.severity >= 2.5) {
+    banner.classList.add('extreme'); bIcon.textContent="🚨"; riskKey="ext";
+  } else if (target.severity >= 1.5) {
+    banner.classList.add('elevated'); bIcon.textContent="⚠️"; riskKey="elev";
+  } else {
+    banner.classList.add('normal'); bIcon.textContent="✅"; riskKey="norm";
+  }
+  
+  bTitle.textContent = getTrans(`risk.${riskKey}`);
+  bDesc.textContent = getTrans(`risk.desc_${riskKey}`);
+
+  // 3. Tables
+  const tKeys = "table";
+  const tblDet = document.getElementById('tbl-details');
+  tblDet.innerHTML = `
+    <tr><td>${getTrans(tKeys+'.year')}</td><td>${target.year}</td></tr>
+    <tr><td>${getTrans(tKeys+'.pr_mm')}</td><td>${target.pr_final.toFixed(1)}</td></tr>
+    <tr><td>${getTrans(tKeys+'.ta_c')}</td><td>${target.ta_final.toFixed(1)}</td></tr>
+    <tr><td>${getTrans(tKeys+'.anom_p')}</td><td class="mono">${target.pr_anom_pct.toFixed(1)}%</td></tr>
+    <tr><td>${getTrans(tKeys+'.anom_t')}</td><td class="mono">${target.ta_anom > 0 ? '+' : ''}${target.ta_anom.toFixed(2)}</td></tr>
+    <tr><td>${getTrans(tKeys+'.sigma')}</td><td>${target.severity.toFixed(2)}</td></tr>
+  `;
+
+  // History Ranking
+  const hist = APP.rawSeries.filter(d => d !== target).sort((a,b) => b.severity - a.severity).slice(0,5);
+  document.getElementById('tbl-history').innerHTML = `<tr><th>${getTrans(tKeys+'.year')}</th><th>${getTrans(tKeys+'.sev')}</th><th>${getTrans('kpi.regime')}</th></tr>` + 
+    hist.map(h => `
+    <tr>
+      <td><b>${h.year}</b></td>
+      <td>${h.severity.toFixed(2)}</td>
+      <td style="font-size:10px">${getTrans(`quad.${h.regimeKey}`)}</td>
+    </tr>
+  `).join('');
+
+  // 4. Chart
+  renderChart();
+}
+
+function renderChart() {
+  const svg = document.getElementById('svg-chart');
+  svg.innerHTML = ''; // Clear
+  const W=900, H=550, Pad=60;
+  
+  // Define Scales with Zoom (Auto-fit)
+  const allX = APP.rawSeries.map(d=>d.x);
+  const allY = APP.rawSeries.map(d=>d.y);
+  
+  // Ensure symetric about 0
+  const maxAbsX = Math.max(40, Math.max(...allX.map(Math.abs))) * 1.1;
+  const maxAbsY = Math.max(2, Math.max(...allY.map(Math.abs))) * 1.1;
+  
+  const scX = v => Pad + ((v + maxAbsX) / (2*maxAbsX)) * (W - 2*Pad);
+  const scY = v => H - Pad - ((v + maxAbsY) / (2*maxAbsY)) * (H - 2*Pad);
+  
+  const cx = scX(0);
+  const cy = scY(0);
+
+  // --- SVG Construction ---
+  const create = (tag, attr) => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for(let k in attr) el.setAttribute(k, attr[k]);
+    return el;
+  };
+
+  // 1. Background Quads
+  // TL (Wet-Warm) [x<0, y>0] -> But screen Y is inverted. y>0 is UP (smaller screen Y)
+  // Logic: x<0 (Left of cx), y>0 (Above cy)
+  svg.appendChild(create('rect', {x:Pad, y:Pad, width:cx-Pad, height:cy-Pad, fill:'#f0fdf4', opacity:0.5}));
+  // TR (Dry-Warm)
+  svg.appendChild(create('rect', {x:cx, y:Pad, width:W-Pad-cx, height:cy-Pad, fill:'#fef2f2', opacity:0.5}));
+  // BL (Wet-Cold)
+  svg.appendChild(create('rect', {x:Pad, y:cy, width:cx-Pad, height:H-Pad-cy, fill:'#eff6ff', opacity:0.5}));
+  // BR (Dry-Cold)
+  svg.appendChild(create('rect', {x:cx, y:cy, width:W-Pad-cx, height:H-Pad-cy, fill:'#faf5ff', opacity:0.5}));
+
+  // 2. Axes
+  svg.appendChild(create('line', {x1:cx, y1:Pad, x2:cx, y2:H-Pad, stroke:'#94a3b8', 'stroke-dasharray':'5,5'}));
+  svg.appendChild(create('line', {x1:Pad, y1:cy, x2:W-Pad, y2:cy, stroke:'#94a3b8', 'stroke-dasharray':'5,5'}));
+
+  // Labels (Translated)
+  const lx = create('text', {x:W/2, y:H-15, 'text-anchor':'middle', fill:'#475569', 'font-size':12, 'font-weight':'bold'});
+  lx.textContent = getTrans("chart.x");
+  svg.appendChild(lx);
+  
+  const ly = create('text', {x:20, y:H/2, 'text-anchor':'middle', fill:'#475569', 'font-size':12, 'font-weight':'bold', transform:`rotate(-90 20,${H/2})`});
+  ly.textContent = getTrans("chart.y");
+  svg.appendChild(ly);
+
+  // 3. Points & Collision Detection
+  const placedLabels = []; // {x, y, w, h}
+  const tooltip = document.getElementById('chart-tooltip');
+
+  // Draw history first (circles)
+  APP.rawSeries.forEach(d => {
+    if (d === APP.targetPoint) return;
+    
+    const px = scX(d.x);
+    const py = scY(d.y);
+    
+    const circle = create('circle', {cx:px, cy:py, r:5, fill:'#cbd5e1', stroke:'#fff', 'stroke-width':1, opacity:0.8});
+    
+    // Interaction
+    circle.onmouseenter = () => {
+      tooltip.style.opacity = 1;
+      tooltip.textContent = `${d.year}\nSev: ${d.severity.toFixed(2)}`;
+      circle.setAttribute('fill', '#64748b');
+      circle.setAttribute('r', 7);
+    };
+    circle.onmouseleave = () => {
+      tooltip.style.opacity = 0;
+      circle.setAttribute('fill', '#cbd5e1');
+      circle.setAttribute('r', 5);
+    };
+    svg.appendChild(circle);
+    
+    // Label for significant years
+    if (d.severity > 2.0) {
+      addLabel(svg, px, py, d.year, placedLabels);
+    }
+  });
+
+  // Draw Target (Star or Big Dot)
+  const tp = APP.targetPoint;
+  const tx = scX(tp.x);
+  const ty = scY(tp.y);
+  const color = tp.isForecast ? '#7c3aed' : '#2563eb';
+  
+  // Pulse effect circle
+  svg.appendChild(create('circle', {cx:tx, cy:ty, r:12, fill:color, opacity:0.2}));
+  // Main dot
+  svg.appendChild(create('circle', {cx:tx, cy:ty, r:8, fill:color, stroke:'#fff', 'stroke-width':2}));
+  
+  // Target Label (Force placement)
+  const tText = create('text', {x:tx, y:ty-14, 'text-anchor':'middle', 'font-weight':'bold', fill:'#1e293b', 'font-size':13});
+  tText.textContent = tp.year;
+  svg.appendChild(tText);
+}
+
+// v4 Collision Logic
+function addLabel(svg, x, y, text, placed) {
+  const w = text.toString().length * 7;
+  const h = 14;
+  let finalY = y - 8;
+  
+  // Simple checks to avoid overlapping previous labels
+  let overlap = true;
+  let attempts = 0;
+  while(overlap && attempts < 5) {
+    overlap = false;
+    for(let p of placed) {
+      if (Math.abs(x - p.x) < (w/2 + p.w/2) && Math.abs(finalY - p.y) < h) {
+        overlap = true;
+        finalY -= 12; // Move up
+        break;
+      }
+    }
+    attempts++;
+  }
+  
+  const el = document.createElementNS("http://www.w3.org/2000/svg", 'text');
+  el.setAttribute('x', x); el.setAttribute('y', finalY);
+  el.setAttribute('text-anchor', 'middle');
+  el.setAttribute('font-size', '10');
+  el.setAttribute('fill', '#64748b');
+  el.textContent = text;
+  svg.appendChild(el);
+  placed.push({x, y:finalY, w, h});
+}
+
+/* --- 6. UTILS & EXPORTS --- */
+
+function applyManual() {
+  try {
+    const txt = document.getElementById('inp-manual').value;
+    const lines = txt.trim().split('\n');
+    const data = [];
+    lines.forEach((l,i) => {
+      if(i===0 && l.includes('year')) return; // skip header
+      const [y,p,t] = l.split(',').map(Number);
+      if(!isNaN(y)) data.push({year:y, pr:p, ta:t, count:30});
+    });
+    if(data.length < 2) throw new Error("CSV precisa de pelo menos 2 linhas");
+    APP.manualOverride = data;
+    alert("Override aplicado! Clique em Calcular.");
+  } catch(e) { alert("CSV Inválido: " + e.message); }
+}
+
+function downloadCSV() {
+  if(!APP.rawSeries.length) return;
+  let csv = "Year,Precip_mm,Temp_C,Precip_Anom_Pct,Temp_Anom_C,Severity,Regime\n";
+  APP.rawSeries.forEach(d => {
+    csv += `${d.year},${d.pr_final.toFixed(2)},${d.ta_final.toFixed(2)},${d.pr_anom_pct.toFixed(2)},${d.ta_anom.toFixed(2)},${d.severity.toFixed(4)},${d.regimeKey}\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='climate_analysis.csv'; a.click();
+}
+
+function downloadSVG() {
+  const s = new XMLSerializer().serializeToString(document.getElementById('svg-chart'));
+  const b = new Blob([s], {type:'image/svg+xml'});
+  const url = URL.createObjectURL(b);
+  const a = document.createElement('a'); a.href=url; a.download='chart.svg'; a.click();
+}
+
+// Start
+init();
+
+</script>
+</body>
+</html>
