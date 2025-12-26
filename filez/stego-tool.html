@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Silent Carrier - sfHTML Steganography</title>
+    <style>
+        :root {
+            --bg: #f4f4f9;
+            --surface: #ffffff;
+            --text: #1a1a1a;
+            --border: #e0e0e0;
+            --primary: #2d3436;
+            --accent: #0984e3;
+            --danger: #d63031;
+            --success: #00b894;
+            --font-mono: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body { font-family: var(--font-sans); background: var(--bg); color: var(--text); line-height: 1.5; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: var(--surface); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        
+        h1, h2, h3 { margin-top: 0; color: var(--primary); }
+        h1 { font-size: 1.5rem; letter-spacing: -0.5px; border-bottom: 2px solid var(--primary); padding-bottom: 1rem; margin-bottom: 2rem; }
+        
+        /* Layout Grid */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+
+        /* UI Elements */
+        .card { background: #fafafa; border: 1px solid var(--border); padding: 1.5rem; border-radius: 6px; margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: #636e72; }
+        
+        input[type="file"], input[type="password"], textarea {
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-mono); box-sizing: border-box; margin-bottom: 1rem;
+        }
+        
+        button {
+            background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; transition: background 0.2s;
+        }
+        button:hover { background: #000; }
+        button.secondary { background: white; color: var(--primary); border: 2px solid var(--border); }
+        button.secondary:hover { border-color: var(--primary); background: #fff; }
+
+        /* Layers */
+        .layer-toggle { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 0.85rem; text-decoration: underline; width: auto; margin-top: 0.5rem; }
+        .hidden { display: none; }
+        
+        /* Feedback */
+        .metric-box { display: flex; justify-content: space-between; margin-bottom: 1rem; font-family: var(--font-mono); font-size: 0.85rem; }
+        .metric-value { font-weight: bold; }
+        .status { margin-top: 1rem; padding: 10px; border-radius: 4px; font-size: 0.9rem; display: none; }
+        .status.success { background: #dff9fb; color: #00b894; border: 1px solid #00b894; display: block; }
+        .status.error { background: #ffeaa7; color: #d63031; border: 1px solid #d63031; display: block; }
+
+        canvas { max-width: 100%; border: 1px dashed #ccc; margin-top: 1rem; }
+        
+        /* Code Block for audit */
+        pre { background: #2d3436; color: #dfe6e9; padding: 1rem; overflow-x: auto; border-radius: 4px; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>THE SILENT CARRIER <span style="font-size:0.6em; color:#999; font-weight:normal;">// Browser-Based Steganography Instrument</span></h1>
+        <p style="font-size: 0.9rem; color: #666;">
+            Esconde dados criptografados (AES-GCM) dentro dos pixels de uma imagem (LSB).<br>
+            <strong>Aviso:</strong> O output é PNG. Não converta para JPG ou os dados serão perdidos.
+        </p>
+    </header>
+
+    <!-- LAYER 0: DECISION MODE -->
+    <div class="grid">
+        <!-- Input Column -->
+        <div>
+            <div class="card">
+                <label>1. Imagem Portadora (Cover)</label>
+                <input type="file" id="imageInput" accept="image/png, image/jpeg">
+                <div id="imageStats" class="metric-box hidden">
+                    <span>Capacidade Max:</span>
+                    <span id="capacityDisplay" class="metric-value">-</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <label>2. Segredo (Payload)</label>
+                <!-- Tabs for Text vs File -->
+                <div style="margin-bottom:10px;">
+                    <button class="secondary" style="width:auto; padding:5px 10px; font-size:0.8rem;" onclick="setMode('text')">Texto</button>
+                    <button class="secondary" style="width:auto; padding:5px 10px; font-size:0.8rem;" onclick="setMode('file')">Arquivo</button>
+                </div>
+                
+                <div id="textMode">
+                    <textarea id="secretMessage" rows="4" placeholder="Digite sua mensagem secreta aqui..."></textarea>
+                </div>
+                <div id="fileMode" class="hidden">
+                    <input type="file" id="filePayload">
+                    <div style="font-size:0.8rem; color:#666;">O arquivo será convertido para Base64 antes de ser embutido.</div>
+                </div>
+
+                <label style="margin-top:1rem;">3. Chave de Encriptação</label>
+                <input type="password" id="password" placeholder="Senha forte (usada para AES-GCM)">
+            </div>
+
+            <button onclick="processStego('encode')">🔒 ESCONDER & BAIXAR PNG</button>
+            <button onclick="processStego('decode')" class="secondary" style="margin-top:10px;">🔓 LER IMAGEM CARREGADA</button>
+        </div>
+
+        <!-- Output/Preview Column -->
+        <div>
+            <div class="card">
+                <label>Preview & Resultado</label>
+                <canvas id="previewCanvas"></canvas>
+                <div id="statusBox" class="status"></div>
+                <a id="downloadLink" style="display:none; margin-top:1rem; text-align:center; display:block; background:var(--accent); color:white; padding:10px; text-decoration:none; border-radius:4px;">Baixar Imagem Segura</a>
+                <div id="decodedOutput" style="margin-top:1rem; white-space: pre-wrap; word-break: break-all; font-family: var(--font-mono); display:none; border:1px solid var(--accent); padding:10px; background:#e1f5fe;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LAYER 1: DRIVERS (Why?) -->
+    <button class="layer-toggle" onclick="toggleId('layer1')">▶ Explicar: Por que funciona?</button>
+    <div id="layer1" class="card hidden" style="margin-top:10px; background:#fff3cd;">
+        <h3>Camada 1: Causalidade</h3>
+        <ul>
+            <li><strong>Capacidade:</strong> Calculada baseada no número de pixels. Usamos apenas 1 bit por canal de cor para evitar distorção visual. Imagens maiores = mensagens maiores.</li>
+            <li><strong>Segurança:</strong> A senha não é salva na imagem. Ela é usada para gerar uma chave criptográfica (Web Crypto API) que embaralha sua mensagem *antes* dela tocar os pixels. Sem a senha, os bits parecem ruído aleatório.</li>
+            <li><strong>Fragilidade:</strong> Se você enviar essa imagem pelo WhatsApp ou Facebook, eles vão re-comprimir a imagem e destruir os pixels exatos onde o segredo vive. Use <strong>Email (anexo), Signal (arquivo) ou USB</strong>.</li>
+        </ul>
+    </div>
+
+    <!-- LAYER 2: MECHANISMS (Tech) -->
+    <button class="layer-toggle" onclick="toggleId('layer2')">▶ Detalhes Técnicos (Audit)</button>
+    <div id="layer2" class="card hidden" style="margin-top:10px;">
+        <h3>Camada 2: Mecanismo LSB + AES</h3>
+        <p>Este instrumento segue o seguinte pipeline:</p>
+        <ol style="font-size:0.9rem;">
+            <li><strong>Input:</strong> Lê a imagem no Canvas HTML5 para acessar o array `Uint8ClampedArray` (RGBA).</li>
+            <li><strong>Crypto:</strong> 
+                <ul>
+                    <li>Gera um Salt aleatório.</li>
+                    <li>Deriva chave via PBKDF2 (100k iterações).</li>
+                    <li>Encripta Payload usando AES-GCM.</li>
+                    <li>Concatena: <code>[Salt (16b)] + [IV (12b)] + [Length (4b)] + [EncryptedData]</code>.</li>
+                </ul>
+            </li>
+            <li><strong>Embed (LSB):</strong> Percorre os pixels. Altera o bit menos significativo (R, G, B) para corresponder aos bits do dado encriptado. O canal Alpha é ignorado.</li>
+            <li><strong>Output:</strong> Gera Blob PNG.</li>
+        </ol>
+    </div>
+
+    <!-- LAYER 3: CONFIG (JSON) -->
+    <button class="layer-toggle" onclick="toggleId('layer3')">▶ Configuração do Modelo (JSON)</button>
+    <div id="layer3" class="card hidden" style="margin-top:10px;">
+        <label>Parâmetros Ativos</label>
+        <pre id="configJson">
+{
+  "algorithm": "LSB (Least Significant Bit)",
+  "encryption": "AES-GCM-256",
+  "kdf": "PBKDF2-SHA256",
+  "iterations": 100000,
+  "channels_used": ["R", "G", "B"],
+  "alpha_channel": "ignored",
+  "header_structure": "Salt(16) + IV(12) + ContentLen(4)"
+}
+        </pre>
+    </div>
+</div>
+
+<script>
+/**
+ * THE SILENT CARRIER - CORE LOGIC
+ * No external dependencies. Uses Native Web Crypto API & Canvas.
+ */
+
+// STATE
+let currentImage = null; // Image Object
+let currentMode = 'text';
+
+// DOM ELEMENTS
+const canvas = document.getElementById('previewCanvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const statusBox = document.getElementById('statusBox');
+
+// INIT
+document.getElementById('imageInput').addEventListener('change', handleImageUpload);
+
+function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('textMode').classList.toggle('hidden', mode !== 'text');
+    document.getElementById('fileMode').classList.toggle('hidden', mode !== 'file');
+}
+
+function toggleId(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle('hidden');
+}
+
+// 1. IMAGE HANDLING
+function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+            currentImage = img;
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            
+            // Calculate Capacity
+            const totalPixels = img.width * img.height;
+            const usableBits = totalPixels * 3; // R, G, B
+            const safeBytes = Math.floor(usableBits / 8) - 100; // minus header overhead
+            
+            document.getElementById('imageStats').classList.remove('hidden');
+            document.getElementById('capacityDisplay').innerText = formatBytes(safeBytes);
+            
+            statusBox.className = 'status success';
+            statusBox.innerText = `Imagem carregada. Capacidade segura: ${formatBytes(safeBytes)}`;
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+function formatBytes(bytes) {
+    if(bytes < 1024) return bytes + " bytes";
+    else if(bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    else return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+// 2. CRYPTO FUNCTIONS (Web Crypto API)
+async function encryptData(password, textData) {
+    const enc = new TextEncoder();
+    const data = enc.encode(textData);
+    
+    // 1. Salt & Key Derivation
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await window.crypto.subtle.importKey(
+        "raw", enc.encode(password), {name: "PBKDF2"}, false, ["deriveKey"]
+    );
+    const key = await window.crypto.subtle.deriveKey(
+        { "name": "PBKDF2", salt: salt, "iterations": 100000, "hash": "SHA-256" },
+        keyMaterial, { "name": "AES-GCM", "length": 256}, false, ["encrypt"]
+    );
+
+    // 2. Encrypt
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const encryptedContent = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv }, key, data
+    );
+
+    // 3. Pack: Salt(16) + IV(12) + Length(4) + Ciphertext
+    const contentLen = new Uint32Array([encryptedContent.byteLength]); // 4 bytes
+    
+    // Combine all buffers
+    const resultBuffer = new Uint8Array(16 + 12 + 4 + encryptedContent.byteLength);
+    resultBuffer.set(salt, 0);
+    resultBuffer.set(iv, 16);
+    resultBuffer.set(new Uint8Array(contentLen.buffer), 28);
+    resultBuffer.set(new Uint8Array(encryptedContent), 32);
+
+    return resultBuffer;
+}
+
+async function decryptData(password, combinedBuffer) {
+    try {
+        const enc = new TextEncoder();
+        
+        // Unpack
+        const salt = combinedBuffer.slice(0, 16);
+        const iv = combinedBuffer.slice(16, 28);
+        const lenView = new Uint32Array(combinedBuffer.slice(28, 32).buffer);
+        const contentLen = lenView[0];
+        const ciphertext = combinedBuffer.slice(32, 32 + contentLen);
+
+        // Derive Key (Must match encrypt params)
+        const keyMaterial = await window.crypto.subtle.importKey(
+            "raw", enc.encode(password), {name: "PBKDF2"}, false, ["deriveKey"]
+        );
+        const key = await window.crypto.subtle.deriveKey(
+            { "name": "PBKDF2", salt: salt, "iterations": 100000, "hash": "SHA-256" },
+            keyMaterial, { "name": "AES-GCM", "length": 256}, false, ["decrypt"]
+        );
+
+        const decryptedBuffer = await window.crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: iv }, key, ciphertext
+        );
+
+        return new TextDecoder().decode(decryptedBuffer);
+    } catch(e) {
+        throw new Error("Senha incorreta ou dados corrompidos.");
+    }
+}
+
+// 3. STEGO FUNCTIONS (LSB)
+async function processStego(action) {
+    const password = document.getElementById('password').value;
+    if(!currentImage) return alert("Por favor, carregue uma imagem primeiro.");
+    if(!password) return alert("Senha é obrigatória para segurança.");
+
+    statusBox.style.display = 'block';
+    statusBox.className = 'status';
+    statusBox.innerText = "Processando... isso pode levar alguns segundos.";
+
+    try {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+
+        if (action === 'encode') {
+            // GET PAYLOAD
+            let payload = "";
+            if(currentMode === 'text') {
+                payload = document.getElementById('secretMessage').value;
+            } else {
+                const fileInput = document.getElementById('filePayload');
+                if(!fileInput.files[0]) throw new Error("Selecione um arquivo.");
+                payload = await readFileAsBase64(fileInput.files[0]);
+                payload = "FILE::" + payload; // Tag to identify file
+            }
+            if(!payload) throw new Error("Mensagem vazia.");
+
+            // ENCRYPT
+            const encryptedBuffer = await encryptData(password, payload);
+            const bits = bufferToBitArray(encryptedBuffer);
+
+            // CHECK CAPACITY
+            if (bits.length > pixels.length * 0.75) { // 3 bits per pixel (R,G,B) roughly
+                throw new Error(`Mensagem muito grande! Precisa de ${bits.length} bits, imagem tem capacidade para aprox ${pixels.length * 0.75}`);
+            }
+
+            // EMBED (LSB)
+            let bitIdx = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (bitIdx >= bits.length) break;
+                // R
+                pixels[i] = (pixels[i] & 254) | bits[bitIdx++];
+                if (bitIdx >= bits.length) break;
+                // G
+                pixels[i+1] = (pixels[i+1] & 254) | bits[bitIdx++];
+                if (bitIdx >= bits.length) break;
+                // B
+                pixels[i+2] = (pixels[i+2] & 254) | bits[bitIdx++];
+            }
+
+            // UPDATE CANVAS
+            ctx.putImageData(imageData, 0, 0);
+            
+            // EXPORT
+            const link = document.getElementById('downloadLink');
+            link.innerText = "Baixar Imagem (stego_result.png)";
+            link.href = canvas.toDataURL("image/png");
+            link.download = "stego_result.png";
+            link.style.display = 'block';
+            statusBox.className = 'status success';
+            statusBox.innerText = "Sucesso! Dados encriptados e escondidos na imagem.";
+
+        } else if (action === 'decode') {
+            // EXTRACT BITS
+            // We don't know length yet, so we read header first? 
+            // Simplified: Read reasonable max amount or scan header logic.
+            // For robustness in sfHTML, let's read all pixels and try to parse header.
+            
+            // Strategy: Extract first 32 bytes (Header) to get length, then extract rest.
+            // But bits are spread out.
+            
+            // Let's just extract a large buffer enough to cover header.
+            // Header is Salt(16)+IV(12)+Len(4) = 32 bytes = 256 bits.
+            
+            const extractedBits = [];
+            // We need to be careful about performance. Reading ALL pixels might be slow for 4k img.
+            // But we have to find the length.
+            
+            // Let's Read Header First (256 bits)
+            let tempBits = [];
+            let pIdx = 0;
+            while(tempBits.length < 256 && pIdx < pixels.length) {
+                 tempBits.push(pixels[pIdx] & 1); // R
+                 tempBits.push(pixels[pIdx+1] & 1); // G
+                 tempBits.push(pixels[pIdx+2] & 1); // B
+                 pIdx += 4;
+            }
+            // Trim to 256
+            const headerBits = tempBits.slice(0, 256);
+            const headerBuffer = bitArrayToBuffer(headerBits);
+            
+            // Parse Length (last 4 bytes of header)
+            const lenView = new Uint32Array(headerBuffer.slice(28, 32).buffer);
+            const contentLen = lenView[0];
+            
+            if(contentLen > 10000000 || contentLen === 0) {
+                 throw new Error("Cabeçalho inválido ou sem mensagem. Verifique a senha ou a imagem.");
+            }
+
+            const totalBitsNeeded = (32 + contentLen) * 8;
+            
+            // Now extract everything needed
+            const fullBits = [];
+            pIdx = 0;
+             while(fullBits.length < totalBitsNeeded && pIdx < pixels.length) {
+                 fullBits.push(pixels[pIdx] & 1);
+                 fullBits.push(pixels[pIdx+1] & 1);
+                 fullBits.push(pixels[pIdx+2] & 1);
+                 pIdx += 4;
+            }
+
+            const fullBuffer = bitArrayToBuffer(fullBits);
+            const decryptedText = await decryptData(password, fullBuffer);
+            
+            const outputDiv = document.getElementById('decodedOutput');
+            outputDiv.style.display = 'block';
+            
+            // Check if it's a file
+            if(decryptedText.startsWith("FILE::")) {
+                const base64Data = decryptedText.replace("FILE::", "");
+                outputDiv.innerHTML = `<strong>Arquivo detectado!</strong><br><a href="${base64Data}" download="segredo_extraido">Clique para baixar o arquivo extraído</a>`;
+            } else {
+                outputDiv.innerText = decryptedText;
+            }
+            
+            statusBox.className = 'status success';
+            statusBox.innerText = "Mensagem extraída com sucesso.";
+        }
+
+    } catch (e) {
+        console.error(e);
+        statusBox.className = 'status error';
+        statusBox.innerText = "Erro: " + e.message;
+    }
+}
+
+// HELPER: File to Base64
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
+}
+
+// HELPER: Buffer <-> Bits
+function bufferToBitArray(buffer) {
+    const bits = [];
+    for (let i = 0; i < buffer.length; i++) {
+        for (let j = 7; j >= 0; j--) {
+            bits.push((buffer[i] >> j) & 1);
+        }
+    }
+    return bits;
+}
+
+function bitArrayToBuffer(bits) {
+    const bytes = new Uint8Array(Math.ceil(bits.length / 8));
+    for (let i = 0; i < bytes.length; i++) {
+        for (let j = 0; j < 8; j++) {
+            if (bits[i * 8 + j]) {
+                bytes[i] |= (1 << (7 - j));
+            }
+        }
+    }
+    return bytes;
+}
+
+</script>
+</body>
+</html>
